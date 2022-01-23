@@ -151,7 +151,7 @@ def init_kmeans(**kwargs):
     return init_kmeans_python(**kwargs)
 
 
-# for federated part (i.e. we need this for each round of federated k-means)
+# for federated part (i.e. we need this for each round of federated k-means, if we end up using this implementation)
 def compute_step_for_device(device_data, centroids):
     # compute distances
     # computationally efficient

@@ -5,11 +5,11 @@ from Crypto.PublicKey import RSA
 
 # We start with a PoW block type.
 class Block:  # Can put block as a dictionary. Though data should always be reserved for (model) parameters.
-    def __init__(self, index, timestamp, data, previous_hash, signature=None):
+    def __init__(self, index, timestamp, data, previous_hash, nonce=0, signature=None):
         self.hash = hashlib.sha256()
         self.index = index
         self.previous_hash = previous_hash  # refer to the last block (link them together)
-        self.nonce = 0  # only applicable in PoW, otherwise this is just the block counter.
+        self.nonce = nonce  # only applicable in PoW, otherwise this is just the block counter.
         self.data = data  # all updates and feedback should be in block
         self.timestamp = timestamp  # does this go well? At block creation, should cal dt.datetime.now()]
         self.signature = signature
@@ -21,8 +21,11 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
             self.hash = hashlib.sha256()
             self.hash.update(str(self).encode('utf-8'))
 
-    def __str__(self):  # potentially use json.dumps? Is this technically a getter?
+    def __str__(self):
         return "{} {} {}".format(self.previous_hash.hexdigest(), self.data, self.nonce)
+
+    def nonce_increment(self):
+        self.nonce += 1
 
     ''' signature functions '''
 
