@@ -5,7 +5,7 @@ from block import Block
 
 
 class Blockchain:
-    def __init__(self, difficulty):
+    def __init__(self, difficulty=0):
         self.difficulty = difficulty  # N.B. We set the difficulty at the chain-level for now.
         self.blocks = []
         self.pool = []  # pool of transactions to complete

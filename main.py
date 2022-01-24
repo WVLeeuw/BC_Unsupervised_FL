@@ -87,6 +87,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args = args.__dict__
 
+    # setup system variables
+    latest_round_num = 0
+
     # set up from scratch
     # 0. create directory for log files
     if not os.path.isdir(log_folder_path):
@@ -111,6 +114,7 @@ if __name__ == '__main__':
     data_owners_needed = int(roles_requirement[0])
     committee_members_needed = int(roles_requirement[1])
     leaders_needed = int(roles_requirement[2])
+    # then device.assign_data_role etc.
 
     # 4. check arguments eligibility
     num_devices = args['num_devices']
@@ -130,24 +134,32 @@ if __name__ == '__main__':
             print(f'Malicious nodes and total devices set to {num_malicious}:{num_devices}')
 
     # 5. create devices in the network
+    device_list = []
 
     # 6. register devices and initialize global parameters
+    for device in device_list:
+        # ...
+        pass
 
     # 7. build log files, to be filled during execution
+    open(f"{log_folder_path}/hello_world.txt", 'w').close()
+    # etc.
 
     # BCFL-KMeans starts here
-    # ...
+    for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
+        # execute BCFL-Kmeans
+        pass
 
-    # i. obtain most recent block
+        # i. obtain most recent block
 
-    # ii. perform local learning step and share result with associated committee member
+        # ii. perform local learning step and share result with associated committee member
 
-    # iii. committee members validate retrieved updates and aggregate viable results
+        # iii. committee members validate retrieved updates and aggregate viable results
 
-    # iv. committee members send updated centroids to every leader
+        # iv. committee members send updated centroids to every leader
 
-    # v. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+        # v. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
 
-    # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+        # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
 
-    # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
+        # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
