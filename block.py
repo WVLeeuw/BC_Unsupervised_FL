@@ -3,9 +3,8 @@ import datetime as dt
 from Crypto.PublicKey import RSA
 
 
-# We start with a PoW block type.
 class Block:  # Can put block as a dictionary. Though data should always be reserved for (model) parameters.
-    def __init__(self, index, timestamp, data, previous_hash, nonce=0, signature=None):
+    def __init__(self, index, timestamp, data, previous_hash, nonce=0, signature=None, mined_by=None, miner_pk=None):
         self.hash = hashlib.sha256()
         self.index = index
         self.previous_hash = previous_hash  # refer to the last block (link them together)
@@ -13,7 +12,11 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         self.data = data  # all updates and feedback should be in block
         self.timestamp = timestamp  # does this go well? At block creation, should cal dt.datetime.now()]
         self.signature = signature
+        # leader specific
+        self.mined_by = mined_by
+        self.miner_pk = miner_pk
 
+    # ToDo: rewrite this to ensure simplest way of doing (0-difficulty) proof-of-work.
     def mine(self, difficulty):
         self.hash.update(str(self).encode('utf-8'))
         while int(self.hash.hexdigest(), 16) > 2 ** (256 - difficulty):  # while hash larger than difficulty required
@@ -32,13 +35,8 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
     def remove_signature(self):
         self.signature = None
 
-    def add_signature(self, signing_key):
-        pass
-
-    ''' checks '''
-
-    def is_valid(self):
-        pass
+    def set_signature(self, signature):
+        self.signature = signature
 
     ''' getters '''
 
@@ -60,7 +58,8 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
     def get_signature(self):
         return self.signature
 
-    ''' setters '''
+    def get_mined_by(self):
+        return self.mined_by
 
-    def add_verified_transaction(self, transaction):
-        self.data.append(transaction)
+    def get_miner_pk(self):
+        return self.miner_pk

@@ -1,7 +1,8 @@
 import numpy as np
-import torch
 import time
 import random
+import copy
+
 from hashlib import sha256
 from Crypto.PublicKey import RSA
 
@@ -17,6 +18,10 @@ class Device:
         # Identifier
         self.idx = idx
 
+        # Trust values
+        self.reputation = (1, 1)
+        self.contribution = 0
+
         # Datasets
         self.train_ds = train_ds
         self.test_ds = test_ds
@@ -28,8 +33,11 @@ class Device:
         self.equal_link_speed = equal_link_speed
         self.base_data_transmission_speed = base_data_transmission_speed
         self.equal_computation_power = equal_computation_power
-        self.knock_out_rounds = knock_out_rounds
-        self.lazy_knock_out_rounds = lazy_knock_out_rounds
+        # self.knock_out_rounds = knock_out_rounds
+        # self.lazy_knock_out_rounds = lazy_knock_out_rounds
+
+        self.devices_dict = None
+        self.aio = False
 
         # BC variables
         self.pow_difficulty = pow_difficulty
@@ -79,6 +87,10 @@ class Device:
         self.private_key = kp.d
         self.public_key = kp.e
 
+    def set_devices_dict_and_aio(self, devices_dict, aio):
+        self.devices_dict = devices_dict
+        self.aio = aio
+
     # Function assigning the roles to devices with some probability and constraints. May be done elsewhere.
     # def assign_role(self):
     #     # non-equal prob, depends on proportion worker:committee:leaders.
@@ -122,7 +134,29 @@ class Device:
     def is_online(self):
         return self.online
 
+    def return_link_speed(self):
+        return self.link_speed
+
+    def return_computation_power(self):
+        return self.computation_power
+
+    def return_reputation(self):
+        return self.reputation
+
+    def return_contribution(self):
+        return self.contribution
+
+    # Returns the performance (using some performance measure) of a data owner for the current round
+    def return_performance(self):
+        return self.performance_this_round
+
+    # Returns the performances recorded from local updates by a committee member
+    def return_performances(self):
+        return self.performances_this_round
+
     ''' functions '''
+
+    ''' not role-specific '''
 
     def sign(self, msg):
         h = int.from_bytes(sha256(msg).digest(), byteorder='big')
@@ -130,21 +164,33 @@ class Device:
         return signature
 
     # Requires using other devices' public key.
-    def verify_signature(self, msg, pk):
-        pass
+    # ToDo: Rewrite s.t. passing pk and modulus as parameters is not necessary.
+    def verify_signature(self, signature, msg, pk, modulus):
+        if self.check_signature:
+            h = int.from_bytes(sha256(msg).digest(), byteorder='big')
+            h_signed = pow(signature, pk, modulus)
+            if h == h_signed:
+                print("The signature is valid and the message has been verified.")
+                return True
+            else:
+                print("The signature is invalid and the message was not recorded.")
+                return False
+        print("The message has been verified.")  # placeholder
+        return True
 
     def add_peers(self, new_peers):
-        if isinstance(new_peers, Device):
+        if isinstance(new_peers, Device):  # if it is a single device
             self.peer_list.add(new_peers)
-        # else:
-        #     self.peer_list.update(new_peers)
+        else:  # list otherwise
+            self.peer_list.update(new_peers)
 
     def remove_peers(self, peers_to_remove):
-        if isinstance(peers_to_remove, Device):
+        if isinstance(peers_to_remove, Device):  # if it is a single device
             self.peer_list.discard(peers_to_remove)
-        # else:
-        #     self.peer_list.difference_update(peers_to_remove)
+        else:  # list otherwise
+            self.peer_list.difference_update(peers_to_remove)
 
+    # ToDo: call to resync_chain(...)
     def switch_online_status(self):
         cur_status = self.online
         online_indicator = random.random()
@@ -173,20 +219,75 @@ class Device:
         # remove self from peer_list if it has been added
         self.remove_peers(self)
         # code pertaining to blacklisted or otherwise untrusted devices goes here.
+        # ToDo: account for blacklisted or otherwise untrusted device
+
+    def register_in_network(self, check_online=False):
+        if self.aio:
+            self.add_peers(set(self.devices_dict.values()))
+        else:
+            potential_registrars = set(self.devices_dict.values())
+            potential_registrars.discard(self)  # ensure self is not in the set of registrars
+            # pick a registrar
+            registrar = random.sample(potential_registrars, 1)[0]
+            if check_online:
+                if not registrar.is_online():
+                    online_registrars = set()
+                    for registrar in potential_registrars:
+                        if registrar.is_online():
+                            online_registrars.add(registrar)
+                    if not online_registrars:  # no potential registrars are online
+                        return False
+                    registrar = random.sample(online_registrars, 1)[0]
+            # add registrar to peer list
+            self.add_peers(registrar)
+            # and copy registrars peer list
+            self.add_peers(registrar.return_peers())
+            # have the registrar add the newly connected device
+            registrar.add_peers(self)
+            return True
 
     def check_pow_proof(self, block_to_check):
         pass
 
+    # ToDo: implement validity check
     def check_chain_validity(self, chain_to_check):
-        pass
+        chain_len = chain_to_check.get_chain_length()
+        if chain_len == 0 or 1:
+            pass
+        else:
+            chain_to_check = chain_to_check.get_chain_structure()
+            for block in chain_to_check[1:]:  # start after genesis
+                pass
+        return True
 
-    def resync_chain(self, mining_consensus):  # describes how to sync after failed validity or fork
-        pass
+    # describes how to sync after failed validity or fork
+    def resync_chain(self, mining_consensus):
+        longest_chain = None
+        updated_from_peer = None
+        cur_chain_len = self.return_blockchain_obj().get_chain_length()
+        for peer in self.peer_list:
+            if peer.is_online():
+                peer_chain = peer.return_blockchain_obj()
+                if peer_chain.get_chain_length() > cur_chain_len:
+                    if self.check_chain_validity(peer_chain):
+                        print(f"A longer chain from {peer.return_idx()} with length {peer_chain.return_chain_length()} "
+                              f"was found and deemed valid.")
+                        cur_chain_len = peer_chain.get_chain_length()
+                        longest_chain = peer_chain
+                        updated_from_peer = peer.return_idx()
+                    else:
+                        print(f"A longer chain from {peer.return_idx()} was found but could not be validated.")
+        if longest_chain:
+            # compare difference between chains
+            longest_chain_struct = longest_chain.get_chain_structure()
+            self.return_blockchain_obj().replace_chain(longest_chain_struct)
+            print(f"{self.idx} chain resynced from peer {updated_from_peer}.")
+            return True
+        print("Chain could not be resynced.")
+        return False
 
     def add_block(self, block_to_add):
         pass
-
-    ''' not role-specific '''
 
     def obtain_latest_block(self):
         return self.blockchain.get_most_recent_block()
@@ -200,6 +301,13 @@ class Device:
         pass
 
     def send_update(self):
+        pass
+
+    # Used to reset variables at the start of a communication round (round-specific variables) for data owners
+    def reset_vars_data_owner(self):
+        pass
+
+    def update_contribution(self):
         pass
 
     ''' committee member '''
@@ -224,12 +332,19 @@ class Device:
                     online_associated_devices.add(peer)
         return online_associated_devices
 
+    # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
+    def reset_vars_committee_member(self):
+        pass
+
     # send_packet can be the combination of send_aggr and send_feedback
 
     def verify_block(self):
         pass
 
     def approve_block(self):  # i.e. if verify_block then approve_block
+        pass
+
+    def update_reputation(self):
         pass
 
     ''' leader '''
@@ -256,6 +371,10 @@ class Device:
                 if peer.return_role() == "committee member":
                     online_committee_members.add(peer)
         return online_committee_members
+
+    # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
+    def reset_vars_leader(self):
+        pass
 
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.

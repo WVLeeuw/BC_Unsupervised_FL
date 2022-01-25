@@ -8,6 +8,7 @@ import argparse
 import random
 import time
 from datetime import datetime
+import numpy as np
 
 date_time = datetime.now().strftime("%m%d%Y_%H%M%S")
 log_folder_path = f"logs/{date_time}"
@@ -150,16 +151,40 @@ if __name__ == '__main__':
         # execute BCFL-Kmeans
         pass
 
-        # i. obtain most recent block
+        # i. assign roles to devices dependent on contribution and reputation
+        data_owners_to_assign = data_owners_needed
+        committee_members_to_assign = committee_members_needed
+        leaders_to_assign = leaders_needed
 
-        # ii. perform local learning step and share result with associated committee member
+        data_owners_this_round = []
+        committee_members_this_round = []
+        leaders_this_round = []
+        # for each device, draw a sample from its beta distribution (dependent on its reputation)
+        beta_samples = []
+        for device in device_list:
+            # could put device.idx in the tuple rather than device.
+            beta_samples.append(np.random.beta(device.reputation[0], device.reputation[1]))
 
-        # iii. committee members validate retrieved updates and aggregate viable results
+        # then assign roles
+        for device in device_list:
+            pass
+            if device.return_role() == "data owner":
+                data_owners_this_round.append(device)
+            elif device.return_role() == "leader":
+                leaders_this_round.append(device)
+            else:
+                committee_members_this_round.append(device)
 
-        # iv. committee members send updated centroids to every leader
+        # ii. obtain most recent block
 
-        # v. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+        # iii. perform local learning step and share result with associated committee member
 
-        # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+        # iv. committee members validate retrieved updates and aggregate viable results
 
-        # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
+        # v. committee members send updated centroids to every leader
+
+        # vi. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+
+        # vii. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+
+        # viii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
