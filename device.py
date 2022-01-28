@@ -6,7 +6,6 @@ import copy
 from hashlib import sha256
 from Crypto.PublicKey import RSA
 
-import KMeans
 from blockchain import Blockchain
 from KMeans import KMeans
 
@@ -14,7 +13,7 @@ from KMeans import KMeans
 class Device:
     def __init__(self, idx, train_ds, test_ds, network_stability, committee_wait_time, committee_threshold,
                  pow_difficulty, equal_link_speed, base_data_transmission_speed, equal_computation_power,
-                 check_signature, knock_out_rounds, lazy_knock_out_rounds, model=None):
+                 check_signature, model=None):
         # Identifier
         self.idx = idx
 
@@ -35,6 +34,7 @@ class Device:
         self.equal_computation_power = equal_computation_power
         # self.knock_out_rounds = knock_out_rounds
         # self.lazy_knock_out_rounds = lazy_knock_out_rounds
+        self.black_list = set()
 
         self.devices_dict = None
         self.aio = False
@@ -122,6 +122,9 @@ class Device:
     def return_peers(self):
         return self.peer_list
 
+    def return_black_list(self):
+        return self.black_list
+
     def return_role(self):
         return self.role
 
@@ -163,8 +166,8 @@ class Device:
         signature = pow(h, self.private_key, self.public_key)
         return signature
 
-    # Requires using other devices' public key.
     # ToDo: Rewrite s.t. passing pk and modulus as parameters is not necessary.
+    # N.B. In order to do that, pk and modulus should be included in the proposed block (msg).
     def verify_signature(self, signature, msg, pk, modulus):
         if self.check_signature:
             h = int.from_bytes(sha256(msg).digest(), byteorder='big')
@@ -190,7 +193,7 @@ class Device:
         else:  # list otherwise
             self.peer_list.difference_update(peers_to_remove)
 
-    # ToDo: call to resync_chain(...)
+    # ToDo: implement update model after chain resync and call it after chain resync.
     def switch_online_status(self):
         cur_status = self.online
         online_indicator = random.random()
@@ -200,12 +203,15 @@ class Device:
             if not cur_status:
                 print(f"{self.idx} has come back online.")
                 # update peer list
+                self.update_peer_list()
                 # resync chain
+                self.resync_chain()
         else:
             self.online = False
             print(f"{self.idx} has gone offline.")
         return self.online
 
+    # ToDo: Implement the usage of self.black_list and print new list (if needed).
     def update_peer_list(self):
         print(f"{self.idx} - {self.role} is updating their peer list...")
         old_peer_list = copy.copy(self.peer_list)
@@ -219,7 +225,16 @@ class Device:
         # remove self from peer_list if it has been added
         self.remove_peers(self)
         # code pertaining to blacklisted or otherwise untrusted devices goes here.
-        # ToDo: account for blacklisted or otherwise untrusted device
+        for peer in self.peer_list:
+            if peer.return_idx() in self.black_list:
+                # add to potentially malicious users
+                pass
+        # remove potentially malicious users
+        if old_peer_list == self.peer_list:
+            print("Peer list has not been changed.")
+        else:
+            print("Peer list has been changed.")
+            added_peers = self.peer_list.difference(old_peer_list)
 
     def register_in_network(self, check_online=False):
         if self.aio:
@@ -246,22 +261,11 @@ class Device:
             registrar.add_peers(self)
             return True
 
-    def check_pow_proof(self, block_to_check):
-        pass
-
-    # ToDo: implement validity check
-    def check_chain_validity(self, chain_to_check):
-        chain_len = chain_to_check.get_chain_length()
-        if chain_len == 0 or 1:
-            pass
-        else:
-            chain_to_check = chain_to_check.get_chain_structure()
-            for block in chain_to_check[1:]:  # start after genesis
-                pass
-        return True
+    # def check_pow_proof(self, block_to_check):
+    #     pass
 
     # describes how to sync after failed validity or fork
-    def resync_chain(self, mining_consensus):
+    def resync_chain(self):
         longest_chain = None
         updated_from_peer = None
         cur_chain_len = self.return_blockchain_obj().get_chain_length()
@@ -269,7 +273,7 @@ class Device:
             if peer.is_online():
                 peer_chain = peer.return_blockchain_obj()
                 if peer_chain.get_chain_length() > cur_chain_len:
-                    if self.check_chain_validity(peer_chain):
+                    if peer_chain.is_chain_valid():
                         print(f"A longer chain from {peer.return_idx()} with length {peer_chain.return_chain_length()} "
                               f"was found and deemed valid.")
                         cur_chain_len = peer_chain.get_chain_length()
@@ -287,7 +291,7 @@ class Device:
         return False
 
     def add_block(self, block_to_add):
-        pass
+        self.blockchain.add_to_chain(block_to_add)
 
     def obtain_latest_block(self):
         return self.blockchain.get_most_recent_block()
