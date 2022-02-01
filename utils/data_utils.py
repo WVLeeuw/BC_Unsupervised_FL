@@ -38,6 +38,7 @@ def load_federated_dummy(seed=None, verbose=False, clients_per_cluster=10, clust
     x["train"], ids["train"] = data[:mid], means[:mid]
     x["test"], ids["test"] = data[mid:], means[mid:]
     print(len(x['train']), x['train'][0].shape)
+    return x, ids
 
 
 def load_federated(limit_csv=None, verbose=False, seed=None, dummy=False, clusters=None):

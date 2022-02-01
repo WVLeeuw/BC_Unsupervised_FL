@@ -5,7 +5,7 @@ from Crypto.PublicKey import RSA
 
 class Block:  # Can put block as a dictionary. Though data should always be reserved for (model) parameters.
     def __init__(self, data, previous_hash, index=None, nonce=0, signature=None, mined_by=None, miner_pubkey=None):
-        self.hash = hashlib.sha256()  # ToDo: check whether we can define this as none, then assign a hash after mining.
+        self.hash = hashlib.sha256()
         self.index = index
         self.previous_hash = previous_hash  # refer to the last block (link them together)
         self.nonce = nonce  # for proof-of-work

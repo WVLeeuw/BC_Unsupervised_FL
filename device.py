@@ -166,12 +166,14 @@ class Device:
         signature = pow(h, self.private_key, self.public_key)
         return signature
 
-    # ToDo: Rewrite s.t. passing pk and modulus as parameters is not necessary.
-    # N.B. In order to do that, pk and modulus should be included in the proposed block (msg).
-    def verify_signature(self, signature, msg, pk, modulus):
+    def verify_signature(self, msg):
         if self.check_signature:
+            # ToDo: ensure the following are included in msg.
+            modulus = msg['rsa_pub_key']["modulus"]
+            pub_key = msg['rsa_pub_key']["pub_key"]
+            signature = msg['signature']
             h = int.from_bytes(sha256(msg).digest(), byteorder='big')
-            h_signed = pow(signature, pk, modulus)
+            h_signed = pow(signature, pub_key, modulus)
             if h == h_signed:
                 print("The signature is valid and the message has been verified.")
                 return True
@@ -211,7 +213,7 @@ class Device:
             print(f"{self.idx} has gone offline.")
         return self.online
 
-    # ToDo: Implement the usage of self.black_list and print new list (if needed).
+    # ToDo: print new list (if needed).
     def update_peer_list(self):
         print(f"{self.idx} - {self.role} is updating their peer list...")
         old_peer_list = copy.copy(self.peer_list)
@@ -225,16 +227,18 @@ class Device:
         # remove self from peer_list if it has been added
         self.remove_peers(self)
         # code pertaining to blacklisted or otherwise untrusted devices goes here.
+        potentially_malicious_peers = set()
         for peer in self.peer_list:
             if peer.return_idx() in self.black_list:
-                # add to potentially malicious users
-                pass
+                potentially_malicious_peers.add(peer)
         # remove potentially malicious users
+        self.remove_peers(potentially_malicious_peers)
+
+        # N.B. could print the resulting peer list here (for debugging)
         if old_peer_list == self.peer_list:
             print("Peer list has not been changed.")
         else:
             print("Peer list has been changed.")
-            added_peers = self.peer_list.difference(old_peer_list)
 
     def register_in_network(self, check_online=False):
         if self.aio:
@@ -291,7 +295,7 @@ class Device:
         return False
 
     def add_block(self, block_to_add):
-        self.blockchain.add_to_chain(block_to_add)
+        self.blockchain.mine(block_to_add)
 
     def obtain_latest_block(self):
         return self.blockchain.get_most_recent_block()

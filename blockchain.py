@@ -5,7 +5,6 @@ import copy
 from block import Block
 
 
-# ToDo: rewrite mine, Block.mine and allow the genesis block to be created within main.py
 class Blockchain:
     def __init__(self, difficulty=0):
         self.difficulty = difficulty  # N.B. We set the difficulty at the chain-level.
