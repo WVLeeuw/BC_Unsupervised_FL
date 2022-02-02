@@ -27,7 +27,7 @@ parser.add_argument('-ncomm', '--num_comm', type=int, default=100, help='number 
 parser.add_argument('-nd', '--num_devices', type=int, default=20, help='number of devices in the simulation')
 parser.add_argument('-nm', '--num_malicious', type=int, default=0, help='number of malicious devices')
 parser.add_argument('-iid', '--IID', type=int, default=0, help='whether to allocate data in iid setting')
-parser.add_argument('-gc', '--num_global_centroids', type=int, default=5, help='number of centroids in the globally '
+parser.add_argument('-gc', '--num_global_centroids', type=int, default=3, help='number of centroids in the globally '
                                                                                'trained model')
 parser.add_argument('-lc', '--num_local_centroids', type=int, default=3, help='number of centroids in locally trained '
                                                                               'models')
@@ -149,8 +149,6 @@ if __name__ == '__main__':
     # BCFL-KMeans starts here
     for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
         # execute BCFL-Kmeans
-        pass
-
         # i. assign roles to devices dependent on contribution and reputation
         data_owners_to_assign = data_owners_needed
         committee_members_to_assign = committee_members_needed
@@ -167,7 +165,6 @@ if __name__ == '__main__':
 
         # then assign roles
         for device in device_list:
-            pass
             if device.return_role() == "data owner":
                 data_owners_this_round.append(device)
             elif device.return_role() == "leader":

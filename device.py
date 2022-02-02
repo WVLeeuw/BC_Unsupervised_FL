@@ -5,9 +5,11 @@ import copy
 
 from hashlib import sha256
 from Crypto.PublicKey import RSA
+from sklearn import cluster
 
 from blockchain import Blockchain
-from KMeans import KMeans
+import KMeans
+from utils import data_utils
 
 
 class Device:
@@ -302,20 +304,24 @@ class Device:
 
     ''' data owner '''
 
-    def kmeans(self):
-        pass
+    # def kmeans(self):
+    #     pass
 
-    def local_update(self, model):
-        pass
+    def local_update(self):
+        # Retrieve the newest block and specifically the centroids recorded in it.
+        newest_block = self.obtain_latest_block()
+        data = newest_block.get_data()
+        g_centroids = data['centroids']
+        # Build a new (local) model using the centroids.
+        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1)
+        self.model.fit(self.train_ds)
 
     def send_update(self):
-        pass
+        local_centroids = self.model.cluster_centers_
+        # send update to associated committee member
 
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
-        pass
-
-    def update_contribution(self):
         pass
 
     ''' committee member '''
@@ -326,10 +332,7 @@ class Device:
     def aggr_update(self):
         pass
 
-    def send_aggr(self):
-        pass
-
-    def send_feedback(self):
+    def send_aggr_and_feedback(self):
         pass
 
     def return_online_associated_devices(self):
@@ -339,6 +342,9 @@ class Device:
                 if peer.return_role() == "data owner":
                     online_associated_devices.add(peer)
         return online_associated_devices
+
+    def update_contribution(self):
+        pass
 
     # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
     def reset_vars_committee_member(self):
@@ -350,9 +356,6 @@ class Device:
         pass
 
     def approve_block(self):  # i.e. if verify_block then approve_block
-        pass
-
-    def update_reputation(self):
         pass
 
     ''' leader '''
@@ -380,6 +383,9 @@ class Device:
                     online_committee_members.add(peer)
         return online_committee_members
 
+    def update_reputation(self):
+        pass
+
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
     def reset_vars_leader(self):
         pass
@@ -387,8 +393,28 @@ class Device:
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
 class DevicesInNetwork(object):
-    def __init__(self, is_iid):
+    def __init__(self, dataset, is_iid, num_devices, num_malicious, network_stability, knock_out_rounds,
+                 lazy_knock_out_rounds, committee_wait_time, committee_threshold, equal_link_speed,
+                 data_transmission_speed, equal_computation_power, check_signature):
+        self.dataset = dataset
         self.is_iid = is_iid
+        self.num_devices = num_devices
+        self.num_malicious = num_malicious
+        self.devices_set = set()
+        self.knock_out_rounds = knock_out_rounds
+        self.lazy_knock_out_rounds = lazy_knock_out_rounds
+        self.network_stability = network_stability
+        self.equal_link_speed = equal_link_speed
+        self.equal_computation_power = equal_computation_power
+        self.data_transmission_speed = data_transmission_speed
+        # committee
+        self.committee_wait_time = committee_wait_time
+        self.committee_threshold = committee_threshold
+        self.check_signature = check_signature
+        # divide data
+        self._dataset_allocation()
 
-    def dataset_balanced_allocation(self):
-        pass
+    # For now, let us allocate a (simple) testing dataset.
+    def _dataset_allocation(self):
+        data_utils.load()
+        # read_dataset

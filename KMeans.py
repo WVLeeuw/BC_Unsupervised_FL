@@ -101,36 +101,36 @@ class KMeans:
 # Placeholder, it seems more sensible to loop over local updates to obtain an aggregate.
 # The global model must then still be updated, but its parameters would simply be updated and put in a new block.
 # Accordingly, no class such as KMeansFederatedBC(KMeans) is required.
-class KMeansFederatedBC(KMeans):
-    def __init__(self, n_clusters, init_centroids='random', max_iter=100, distance_metric='euclidean', seed=None,
-                 reassign_min=None, reassign_after=None, verbose=False, batch_size=None, sample_fraction=1.0,
-                 epochs_per_round=1, learning_rate=None, max_no_change=None, adaptive_lr=None, momentum=None,
-                 epoch_lr=1):
-        super().__init__(n_clusters=n_clusters, init_centroids=init_centroids, max_iter=max_iter, tol=tol,
-                         distance_metric=distance_metric, seed=seed, reassign_min=reassign_min,
-                         reassign_after=reassign_after,
-                         verbose=verbose)
-
-        self.batch_size = batch_size
-        self.sample_fraction = sample_fraction
-        self.epochs = epochs_per_round
-        self.lr = learning_rate
-        self.adaptive_lr = adaptive_lr
-        self.max_no_change = max_no_change
-        self.momentum_rate = momentum
-        self.epoch_lr = epoch_lr
-
-    def federated_round_single_step(self, clients_in_round, centroids):
-        pass
-
-    def do_federated_round(self, clients_in_round, centroids):
-        pass
-
-    def fit(self, X, record_at=None):
-        pass
-
-    def predict(self, x):
-        pass
+# class KMeansFederatedBC(KMeans):
+#     def __init__(self, n_clusters, init_centroids='random', max_iter=100, distance_metric='euclidean', seed=None,
+#                  reassign_min=None, reassign_after=None, verbose=False, batch_size=None, sample_fraction=1.0,
+#                  epochs_per_round=1, learning_rate=None, max_no_change=None, adaptive_lr=None, momentum=None,
+#                  epoch_lr=1):
+#         super().__init__(n_clusters=n_clusters, init_centroids=init_centroids, max_iter=max_iter, tol=tol,
+#                          distance_metric=distance_metric, seed=seed, reassign_min=reassign_min,
+#                          reassign_after=reassign_after,
+#                          verbose=verbose)
+#
+#         self.batch_size = batch_size
+#         self.sample_fraction = sample_fraction
+#         self.epochs = epochs_per_round
+#         self.lr = learning_rate
+#         self.adaptive_lr = adaptive_lr
+#         self.max_no_change = max_no_change
+#         self.momentum_rate = momentum
+#         self.epoch_lr = epoch_lr
+#
+#     def federated_round_single_step(self, clients_in_round, centroids):
+#         pass
+#
+#     def do_federated_round(self, clients_in_round, centroids):
+#         pass
+#
+#     def fit(self, X, record_at=None):
+#         pass
+#
+#     def predict(self, x):
+#         pass
 
 
 def init_kmeans_python(n_clusters, init_centroids='random', batch_size=None, seed=None, iterations=100, verbose=False):

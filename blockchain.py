@@ -1,6 +1,7 @@
 import hashlib
 import time
 import copy
+import numpy as np
 
 from block import Block
 
@@ -31,7 +32,8 @@ class Blockchain:
     def create_genesis_block(self):  # dummy block for now, later we can add some sensible parameters in data
         h = hashlib.sha256()
         h.update(''.encode('utf-8'))
-        genesis = Block(data='Genesis', previous_hash=h)
+        data = np.zeros((2, 2))
+        genesis = Block(data=data, previous_hash=h, index=0)
         genesis.mine(self.difficulty)
         self.blocks.append(genesis)
 

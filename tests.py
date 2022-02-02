@@ -11,6 +11,7 @@ from Crypto.PublicKey import RSA
 from sklearn import cluster
 from sklearn.datasets import load_breast_cancer, load_iris
 from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ def test_block_propagation():
 
 
 def test_nonce_increment():
-    bc = Blockchain(difficulty=1)
+    bc = Blockchain(difficulty=5)
     bc.create_genesis_block()
     prev_block = bc.get_most_recent_block()
 
@@ -139,7 +140,6 @@ def test_kmeans_real():
 def test_sklearn_kmeans_real():
     breast_cancer = load_breast_cancer()
     df = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
-    labels = pd.Series(breast_cancer.target)
 
     # Train-test split
     train, test = train_test_split(df, test_size=.2)
@@ -174,12 +174,8 @@ def test_elbow_method():
 def test_kmeans_simple_vis():
     iris = load_iris()
     df = pd.DataFrame(iris.data, columns=iris.feature_names)
-    labels = pd.Series(iris.target)
 
     train, test = train_test_split(df, test_size=.2)
-
-    # kmeans = cluster.KMeans(n_clusters=3)
-    # kmeans.fit(train)
 
     kmeans_length = cluster.KMeans(n_clusters=3)
     kmeans_length.fit(train[['sepal length (cm)', 'petal length (cm)']])
@@ -188,6 +184,8 @@ def test_kmeans_simple_vis():
     test_length = test[['sepal length (cm)', 'petal length (cm)']]
     centroids = kmeans_length.cluster_centers_
     u_labels_length = np.unique(label_length)
+    inertia = kmeans_length.inertia_
+    print(inertia/len(test))
 
     for i in u_labels_length:
         plt.scatter(test_length[label_length == i].iloc[:, 0], test_length[label_length == i].iloc[:, 1], label=i)
@@ -196,3 +194,23 @@ def test_kmeans_simple_vis():
     plt.ylabel(test_length.columns[1])
     plt.legend()
     plt.show()
+
+
+def test_kmeans_pca():
+    iris = load_iris().data
+    pca = PCA(2)
+    df = pca.fit_transform(iris)
+
+    kmeans = cluster.KMeans(n_clusters=3)
+    label = kmeans.fit_predict(df)
+    u_labels = np.unique(label)
+    centroids = kmeans.cluster_centers_
+    inertia = kmeans.inertia_
+    print(inertia/len(df))
+
+    for i in u_labels:
+        plt.scatter(df[label == i, 0], df[label == i, 1], label=i)
+    plt.scatter(centroids[:, 0], centroids[:, 1], s=80, color='k')
+    plt.legend()
+    plt.show()
+
