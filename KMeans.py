@@ -9,6 +9,25 @@ def randomly_init_centroid(min_value, max_value, n_dims, repeats=1):
         return min_value + (max_value - min_value) * np.random.rand(repeats, n_dims)
 
 
+def randomly_init_centroid_range(values, n_dims, repeats=1):
+    if len(values) == n_dims:
+        if repeats == 1:
+            centroid = []
+            for value in values:
+                centroid.append(value[0] + (value[1] - value[0]) * np.random.rand())
+            return np.asarray(centroid)
+        else:
+            centroids = []
+            for i in range(repeats):
+                centroid = []
+                for value in values:
+                    centroid.append(value[0] + (value[1] - value[0]) * np.random.rand())
+                centroids.append(centroid)
+            return np.asarray(centroids)
+    else:
+        print("Must supply a range of values that has equal length has the number of features in the dataset.")
+
+
 class KMeans:
     def __init__(self, n_clusters, init_centroids='random', max_iter=100, tol=0.0001, distance_metric='euclidean',
                  seed=None, reassign_min=None, reassign_after=None, n_dims=None, verbose=False):

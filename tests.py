@@ -1,3 +1,5 @@
+import os
+
 import sklearn.cluster
 
 from blockchain import Blockchain
@@ -74,6 +76,15 @@ def test_simple_encrypt():
 
     hash_from_signature = pow(signature, priv_key, modulus)
     print("Signature valid:", h == hash_from_signature)
+
+
+def test_centroid_init():
+    x = np.array([[1, 2], [1, 4], [1, 0], [10, 2], [10, 4], [10, 0]])
+    values = [[1, 10], [0, 4]]
+    centroid = KMeans.randomly_init_centroid_range(values, 2)  # Try initializing a single centroid
+    centroids = KMeans.randomly_init_centroid_range(values, 2, 3)  # Idem, but multiple
+    print(centroid)
+    print(centroids)
 
 
 def test_kmeans_dummy():
@@ -214,3 +225,43 @@ def test_kmeans_pca():
     plt.legend()
     plt.show()
 
+
+def test_data_load():
+    train, test = data_utils.load(prop_train=.8, prop_test=.2)
+    print(train.head())
+    print(test.head())
+
+
+def test_genesis_block_with_params():
+    bc = Blockchain()
+    iris = load_iris()
+    df = pd.DataFrame(iris.data, columns=iris.feature_names)
+    vals = []
+    for col in df.columns:
+        vals.append([min(df[col]), max(df[col])])
+
+    init_centroids = KMeans.randomly_init_centroid_range(vals, len(df.columns), 3)
+    data = dict()
+    data['centroids'] = init_centroids
+    bc.create_genesis_block()
+    prev_block = bc.get_most_recent_block()
+    block = Block(data=data, previous_hash=prev_block.get_hash())
+    bc.mine(block)
+
+    print(str(bc.get_chain_structure()[-1]))
+    return bc
+
+
+def test_block_retrieval_and_local_update():
+    bc = test_genesis_block_with_params()
+    recent_block = bc.get_most_recent_block()
+    centroids = recent_block.get_data()['centroids']
+
+    iris = load_iris()
+    df = pd.DataFrame(iris.data, columns=iris.feature_names)
+
+    model = cluster.KMeans(n_clusters=centroids.shape[0], init=centroids, n_init=1)
+    model.fit(df)
+
+    print(centroids)
+    print(model.cluster_centers_)

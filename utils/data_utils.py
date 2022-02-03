@@ -2,16 +2,23 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
 
 project_dir = os.path.dirname(os.getcwd())
 
 # This file describes utility functions for loading and creating (dummy) datasets.
 
 
-def load(subsample_train_frac=None, num_train=None, num_test=None, seed=None, verbose=None):
-    np.random.seed(seed)
+def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True, verbose=None):
     # This is where we locate the .csv files and read them as pandas dataframes.
-    pass
+    iris = load_iris()
+    df = pd.DataFrame(iris.data, columns=iris.feature_names)
+    df_train, df_test = train_test_split(df, test_size=prop_test)
+    # print(df.columns)
+    if verbose:
+        print(df.head())
+    return df_train, df_test
 
 
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):

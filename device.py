@@ -416,5 +416,12 @@ class DevicesInNetwork(object):
 
     # For now, let us allocate a (simple) testing dataset.
     def _dataset_allocation(self):
-        data_utils.load()
-        # read_dataset
+        # read dataset
+        dataset = data_utils.load()
+
+        # then divide across devices
+        train_data = dataset[0]
+        test_data = dataset[1]
+
+        data_size_train = train_data // self.num_devices
+        data_size_test = test_data // self.num_devices
