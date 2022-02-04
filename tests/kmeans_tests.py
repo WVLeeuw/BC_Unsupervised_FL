@@ -1,81 +1,13 @@
-import os
-
-import sklearn.cluster
-
-from blockchain import Blockchain
-from block import Block
-from device import Device, DevicesInNetwork
 import KMeans
-from utils import data_utils, stats_utils
 
-from hashlib import sha256
-from Crypto.PublicKey import RSA
 from sklearn import cluster
 from sklearn.datasets import load_breast_cancer, load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
-def test_bc_genesis():
-    bc = Blockchain()
-    bc.create_genesis_block()
-    print(str(bc.get_chain_structure()[0]))
-
-
-def test_block_propagation():
-    bc = Blockchain()
-    bc.create_genesis_block()
-    prev_block = bc.get_most_recent_block()
-    # Test whether we acquire the same hash if we rehash the most recent block.
-    print(sha256(str(bc.get_most_recent_block()).encode('utf-8')).hexdigest() == prev_block.get_hash().hexdigest())
-
-    # Test whether we can add a new block using that hash.
-    block = Block(data='test_block', previous_hash=prev_block.get_hash())
-    bc.mine(block)
-    added_properly = bc.get_chain_length()
-    if added_properly:
-        print(str(bc.get_most_recent_block()))
-
-
-def test_nonce_increment():
-    bc = Blockchain(difficulty=5)
-    bc.create_genesis_block()
-    prev_block = bc.get_most_recent_block()
-
-    block1 = Block(data='first_test_block', previous_hash=prev_block.get_hash())
-    bc.mine(block1)
-
-    recent_block = bc.get_most_recent_block()
-    block2 = Block(data='second_test_block', previous_hash=recent_block.get_hash())
-    bc.mine(block2)
-
-    print(str(bc.get_chain_structure()[-2]), str(bc.get_chain_structure()[-1]))
-
-
-def test_simple_hash():
-    msg = 'hello world'.encode('utf-8')
-    h = sha256(msg).digest()
-    h_hex = sha256(msg).hexdigest()
-
-    print(h == h_hex, type(h) == type(h_hex), h, h_hex)
-
-
-def test_simple_encrypt():
-    kp = RSA.generate(bits=1024)
-    modulus = kp.n
-    priv_key = kp.d
-    pub_key = kp.e
-
-    msg = 'hello world'.encode('utf-8')
-    h = int.from_bytes(sha256(msg).digest(), byteorder='big')
-    signature = pow(h, pub_key, modulus)
-    print("Signature:", hex(signature))
-
-    hash_from_signature = pow(signature, priv_key, modulus)
-    print("Signature valid:", h == hash_from_signature)
 
 
 def test_centroid_init():
@@ -115,20 +47,6 @@ def test_sklearn_kmeans_dummy():
     print(model.cluster_centers_)
 
 
-def test_data_load_sklearn():
-    breast_cancer = load_breast_cancer()
-    df = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
-    print(np.count_nonzero(breast_cancer.target))
-    # print(df.columns)
-    print(df.head())
-
-
-def test_data_load_local():
-    df = pd.read_csv("data/breast_cancer_wisconsin.csv")
-    # print(df.columns)
-    print(df.head())
-
-
 # For these tests, different implementations of k-means are used.
 # Moreover, it does not matter whether we retrieve the datasets from sklearn.datasets or from local storage.
 # However, using sklearn.datasets makes these tests executable remotely.
@@ -142,8 +60,8 @@ def test_kmeans_real():
 
     kmeans = KMeans.init_kmeans(n_clusters=3)
     kmeans.fit(train)
-    print(kmeans.labels_)
-    print(kmeans.cluster_centers_)
+    # print(kmeans.labels_)
+    # print(kmeans.cluster_centers_)
 
     kmeans.predict(test)
 
@@ -157,8 +75,8 @@ def test_sklearn_kmeans_real():
 
     kmeans = cluster.KMeans(n_clusters=3)
     kmeans.fit(train)
-    print(kmeans.labels_)
-    print(kmeans.cluster_centers_)
+    # print(kmeans.labels_)
+    # print(kmeans.cluster_centers_)
 
     kmeans.predict(test)
 
@@ -224,44 +142,3 @@ def test_kmeans_pca():
     plt.scatter(centroids[:, 0], centroids[:, 1], s=80, color='k')
     plt.legend()
     plt.show()
-
-
-def test_data_load():
-    train, test = data_utils.load(prop_train=.8, prop_test=.2)
-    print(train.head())
-    print(test.head())
-
-
-def test_genesis_block_with_params():
-    bc = Blockchain()
-    iris = load_iris()
-    df = pd.DataFrame(iris.data, columns=iris.feature_names)
-    vals = []
-    for col in df.columns:
-        vals.append([min(df[col]), max(df[col])])
-
-    init_centroids = KMeans.randomly_init_centroid_range(vals, len(df.columns), 3)
-    data = dict()
-    data['centroids'] = init_centroids
-    bc.create_genesis_block()
-    prev_block = bc.get_most_recent_block()
-    block = Block(data=data, previous_hash=prev_block.get_hash())
-    bc.mine(block)
-
-    print(str(bc.get_chain_structure()[-1]))
-    return bc
-
-
-def test_block_retrieval_and_local_update():
-    bc = test_genesis_block_with_params()
-    recent_block = bc.get_most_recent_block()
-    centroids = recent_block.get_data()['centroids']
-
-    iris = load_iris()
-    df = pd.DataFrame(iris.data, columns=iris.feature_names)
-
-    model = cluster.KMeans(n_clusters=centroids.shape[0], init=centroids, n_init=1)
-    model.fit(df)
-
-    print(centroids)
-    print(model.cluster_centers_)
