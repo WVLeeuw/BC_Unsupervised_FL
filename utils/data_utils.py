@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.datasets import load_iris
+from sklearn.datasets import load_iris, make_blobs
 from sklearn.model_selection import train_test_split
 
 project_dir = os.path.dirname(os.getcwd())
@@ -36,6 +36,23 @@ def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=
     return data, means
 
 
+# Function to create blobs that are very clearly structured as clusters.
+# Can already obtain train and test sets from this within this function.
+def create_blobs(dims=2, samples=100, clusters=3, split_train_test=False, verbose=False):
+    X, y = make_blobs(n_samples=samples, centers=clusters, n_features=dims)
+
+    if verbose:
+        print(X.shape)
+        print(len(y), y)
+
+    if split_train_test:
+        prop = .2
+        num_test = int(prop*len(X))
+        return X[:num_test], X[num_test:], y[:num_test], y[num_test:]  # test, train, y_test, y_train
+
+    return X, y
+
+
 def load_federated_dummy(seed=None, verbose=False, clients_per_cluster=10, clusters=10):
     np.random.seed(seed)
     x = {}
@@ -52,16 +69,4 @@ def load_federated(limit_csv=None, verbose=False, seed=None, dummy=False, cluste
     if dummy:
         return load_federated_dummy(seed=seed, verbose=verbose, clusters=clusters)
     else:
-        return load_federated_real(limit_csv, verbose, seed)
-
-
-def load_federated_real(limit_csv=None, verbose=False, seed=None):
-    pass
-
-
-def test():
-    pass
-
-
-if __name__ == "__main__":
-    test()
+        raise NotImplementedError

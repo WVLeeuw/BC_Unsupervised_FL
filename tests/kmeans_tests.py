@@ -1,7 +1,7 @@
 import KMeans
 
 from sklearn import cluster
-from sklearn.datasets import load_breast_cancer, load_iris
+from sklearn.datasets import load_breast_cancer, load_iris, make_blobs
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 
@@ -139,6 +139,38 @@ def test_kmeans_pca():
 
     for i in u_labels:
         plt.scatter(df[label == i, 0], df[label == i, 1], label=i)
+    plt.scatter(centroids[:, 0], centroids[:, 1], s=80, color='k')
+    plt.legend()
+    plt.show()
+
+
+def test_clustering_make_blobs_simple():
+    X, y = make_blobs(n_samples=10, centers=3, n_features=2)
+    print(X.shape)
+    print(y)
+
+    kmeans = cluster.KMeans(n_clusters=3)
+    label = kmeans.fit_predict(X)
+    print(label)
+
+    kmeans = KMeans.init_kmeans(n_clusters=3)
+    centroids, labels = kmeans.fit(X)
+    print(labels)
+
+    plt.scatter(X[:, 0], X[:, 1])
+    plt.show()
+
+
+def test_clustering_make_blobs():
+    X, y = make_blobs(n_samples=100, centers=3, n_features=2)
+
+    kmeans = cluster.KMeans(n_clusters=3)
+    label = kmeans.fit_predict(X)
+    u_label = np.unique(label)
+    centroids = kmeans.cluster_centers_
+
+    for i in u_label:
+        plt.scatter(X[label == i, 0], X[label == i, 1], label=i)
     plt.scatter(centroids[:, 0], centroids[:, 1], s=80, color='k')
     plt.legend()
     plt.show()

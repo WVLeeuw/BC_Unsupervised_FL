@@ -13,9 +13,8 @@ from utils import data_utils
 
 
 class Device:
-    def __init__(self, idx, train_ds, test_ds, network_stability, committee_wait_time, committee_threshold,
-                 pow_difficulty, equal_link_speed, base_data_transmission_speed, equal_computation_power,
-                 check_signature, model=None):
+    def __init__(self, idx, ds, network_stability, committee_wait_time, committee_threshold, equal_link_speed,
+                 base_data_transmission_speed, equal_computation_power, check_signature, model=None):
         # Identifier
         self.idx = idx
 
@@ -24,8 +23,7 @@ class Device:
         self.contribution = 0
 
         # Datasets
-        self.train_ds = train_ds
-        self.test_ds = test_ds
+        self.ds = ds
 
         # P2P network variables
         self.online = True
@@ -42,7 +40,6 @@ class Device:
         self.aio = False
 
         # BC variables
-        self.pow_difficulty = pow_difficulty
         self.check_signature = check_signature
         self.blockchain = Blockchain()
 
@@ -400,7 +397,6 @@ class DevicesInNetwork(object):
         self.is_iid = is_iid
         self.num_devices = num_devices
         self.num_malicious = num_malicious
-        self.devices_set = set()
         self.knock_out_rounds = knock_out_rounds
         self.lazy_knock_out_rounds = lazy_knock_out_rounds
         self.network_stability = network_stability
@@ -412,16 +408,33 @@ class DevicesInNetwork(object):
         self.committee_threshold = committee_threshold
         self.check_signature = check_signature
         # divide data
+        self.devices_set = {}
         self._dataset_allocation()
 
     # For now, let us allocate a (simple) testing dataset.
     def _dataset_allocation(self):
         # read dataset
-        dataset = data_utils.load()
+        train_data, labels = data_utils.create_blobs()
 
         # then divide across devices
-        train_data = dataset[0]
-        test_data = dataset[1]
+        # train_data = dataset[0]
+        # test_data = dataset[1]
 
-        data_size_train = train_data // self.num_devices
-        data_size_test = test_data // self.num_devices
+        data_size_train = len(train_data) // self.num_devices
+        # data_size_test = test_data // self.num_devices
+
+        # Depending on is_iid, we allocate an equal amount of records to each device.
+        if not self.is_iid:
+            for i in range(self.num_devices):
+                # divide the data equally
+                local_data = train_data[i*data_size_train:i+1*data_size_train]
+                local_labels = labels[i*data_size_train:i+1*data_size_train]
+                local_dataset = [local_data, local_labels]
+
+                device_idx = f'device_{i + 1}'
+                a_device = Device(device_idx, local_dataset, self.network_stability, self.committee_wait_time,
+                                  self.committee_threshold, self.equal_link_speed, self.data_transmission_speed,
+                                  self.equal_computation_power, self.check_signature)
+                self.devices_set[device_idx] = a_device
+        else:
+            raise NotImplementedError  # ToDo: simulate non-iid distribution of data.
