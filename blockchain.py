@@ -24,15 +24,14 @@ class Blockchain:
         else:
             print("The block could not be appended.")
 
-    # N.B. block should already be defined, meaning it should include a reference to the previous block.
     def mine(self, block):
         block.mine(self.difficulty)
         self._add_to_chain(block)
 
-    def create_genesis_block(self):  # dummy block for now, later we can add some sensible parameters in data
+    def create_genesis_block(self, data=None):
         h = hashlib.sha256()
         h.update(''.encode('utf-8'))
-        data = np.zeros((2, 2))
+        # data = np.zeros((2, 2))
         genesis = Block(data=data, previous_hash=h, index=0)
         genesis.mine(self.difficulty)
         self.blocks.append(genesis)

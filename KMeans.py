@@ -25,7 +25,7 @@ def randomly_init_centroid_range(values, n_dims, repeats=1):
                 centroids.append(centroid)
             return np.asarray(centroids)
     else:
-        print("Must supply a range of values that has equal length has the number of features in the dataset.")
+        print("Must supply a range of values that has equal length as the number of features in the dataset.")
 
 
 class KMeans:

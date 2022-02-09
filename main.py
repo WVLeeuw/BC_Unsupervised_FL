@@ -1,6 +1,9 @@
+import block
 from block import Block
 from blockchain import Blockchain
 from device import Device, DevicesInNetwork
+import KMeans
+from utils import data_utils
 
 import os
 import sys
@@ -42,7 +45,6 @@ parser.add_argument('-lo', '--lazy_knock_out_rounds', type=int, default=10, help
 parser.add_argument('-vh', '--validator_threshold', type=float, default=1.0, help='threshold value of a difference in '
                                                                                   'accuracy with which to identify '
                                                                                   'malicious data owners')
-parser.add_argument('-pow', '--pow_difficulty', type=int, default=0, help='difficulty of proof-of-work')
 
 # Additional BC attributes (to make entire process more efficient)
 parser.add_argument('-cmt', '--committee_member_wait_time', type=float, default=0.0, help="default time window during "
@@ -134,13 +136,43 @@ if __name__ == '__main__':
         else:
             print(f'Malicious nodes and total devices set to {num_malicious}:{num_devices}')
 
-    # 5. create devices in the network
-    device_list = []
+    # 5. create genesis block and devices in the network, dummy data for now
+    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
+    blobs, labels = data_utils.create_blobs()
+    min_x, max_x = min(blobs[:, 0]), max(blobs[:, 0])
+    min_y, max_y = min(blobs[:, 1]), max(blobs[:, 1])
+    values = [[min_x, max_x], [min_y, max_y]]
+    n_dims, n_clusters = 2, args['num_global_centroids']
+    data = dict()
+    data['centroids'] = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
+    bc = Blockchain()
+    bc.create_genesis_block(data=data)
 
-    # 6. register devices and initialize global parameters
+    devices_in_network = DevicesInNetwork(is_iid=args['IID'], num_devices=num_devices, num_malicious=num_malicious,
+                                          network_stability=args['network_stability'],
+                                          knock_out_rounds=args['knock_out_rounds'],
+                                          lazy_knock_out_rounds=args['lazy_knock_out_rounds'],
+                                          committee_wait_time=args['committee_member_wait_time'],
+                                          committee_threshold=args['committee_member_threshold'],
+                                          equal_link_speed=args['equal_link_speed'],
+                                          data_transmission_speed=args['data_transmission_speed'],
+                                          equal_computation_power=args['equal_computation_power'],
+                                          check_signature=args['check_signature'], bc=bc)
+    device_list = list(devices_in_network.devices_set.values())
+
+    # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
-        # ...
-        pass
+        # initialize for each device their kmeans model
+        device.initialize_kmeans_model()
+        # helper function simulating registration, effectively a setter in Device class
+        device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
+        # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
+        device.register_in_network()
+        if args['verbose']:
+            print(str(device.obtain_latest_block()))
+    # remove the device if it is in its own peer list
+    for device in device_list:
+        device.remove_peers(device)
 
     # 7. build log files, to be filled during execution
     open(f"{log_folder_path}/hello_world.txt", 'w').close()
@@ -148,7 +180,6 @@ if __name__ == '__main__':
 
     # BCFL-KMeans starts here
     for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
-        # execute BCFL-Kmeans
         # i. assign roles to devices dependent on contribution and reputation
         data_owners_to_assign = data_owners_needed
         committee_members_to_assign = committee_members_needed
@@ -163,16 +194,31 @@ if __name__ == '__main__':
             # could put device.idx in the tuple rather than device.
             beta_samples.append(np.random.beta(device.reputation[0], device.reputation[1]))
 
-        # then assign roles
+        # ToDo: assign roles depending on the sampled values and existing contribution values
+        random.shuffle(device_list)  # for now, we just randomly shuffle them
         for device in device_list:
+            if data_owners_to_assign:
+                device.assign_data_role()
+                data_owners_to_assign -= 1
+            elif committee_members_to_assign:
+                device.assign_committee_role()
+                committee_members_to_assign -= 1
+            elif leaders_to_assign:
+                device.assign_leader_role()
+                leaders_to_assign -= 1
+
             if device.return_role() == "data owner":
                 data_owners_this_round.append(device)
             elif device.return_role() == "leader":
                 leaders_this_round.append(device)
-            else:
+            elif device.return_role() == "committee member":
                 committee_members_this_round.append(device)
 
-        # ii. obtain most recent block
+        # ii. obtain most recent block and perform local learning step
+        for device in data_owners_this_round:
+            device.local_update()
+            if args['verbose']:
+                print(device.retrieve_local_centroids())
 
         # iii. perform local learning step and share result with associated committee member
 

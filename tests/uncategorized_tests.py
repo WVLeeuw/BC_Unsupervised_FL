@@ -96,4 +96,33 @@ def test_make_blobs_divide_alternative():
         print(local_data.shape)
         datasets.append(local_data)
 
-    print(datasets)
+    # print(datasets)
+
+
+def test_real_data_divide():
+    train, test = data_utils.load(prop_train=.8, prop_test=.2)
+    num_devices = 3
+
+    train_size_local = len(train) // num_devices
+    test_size_local = len(test) // num_devices
+
+    dfs_train = []
+    dfs_test = []
+    for i in range(num_devices):
+        local_data = train.iloc[i*train_size_local:(i+1)*train_size_local]
+        local_test_data = test.iloc[i*test_size_local:(i+1)*test_size_local]
+        print(local_data.shape, local_test_data.shape)
+        dfs_train.append(local_data)
+        dfs_test.append(local_test_data)
+
+    for df in dfs_train:
+        print(df.head())
+
+
+def test_real_data_divide_lazy():
+    train, test = data_utils.load(prop_train=.8, prop_test=.2)
+    num_devices = 3
+
+    dfs = np.array_split(train, num_devices)  # N.B. np.array_split works for ndarrays as well as for dataframes.
+    for df in dfs:
+        print(df.head())

@@ -25,7 +25,7 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
 
     # ToDo: improve way of showing the block contents.
     def __str__(self):
-        return "{} {} {} {}".format(self.previous_hash.hexdigest(), self.data, self.nonce, self.timestamp)
+        return "{} {} {} {}".format(self.previous_hash.hexdigest(), self.data, self.hash.hexdigest(), self.timestamp)
 
     # def nonce_increment(self):
     #     self.nonce += 1

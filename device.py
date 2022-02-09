@@ -14,7 +14,7 @@ from utils import data_utils
 
 class Device:
     def __init__(self, idx, ds, network_stability, committee_wait_time, committee_threshold, equal_link_speed,
-                 base_data_transmission_speed, equal_computation_power, check_signature, model=None):
+                 base_data_transmission_speed, equal_computation_power, check_signature, bc=None, model=None):
         # Identifier
         self.idx = idx
 
@@ -23,7 +23,8 @@ class Device:
         self.contribution = 0
 
         # Datasets
-        self.ds = ds
+        self.dataset = ds[0]
+        self.labels = ds[1]
 
         # P2P network variables
         self.online = True
@@ -41,7 +42,10 @@ class Device:
 
         # BC variables
         self.check_signature = check_signature
-        self.blockchain = Blockchain()
+        if bc is not None:
+            self.blockchain = copy.copy(bc)
+        else:
+            self.blockchain = Blockchain()
 
         # Set link speed and computation power
         if equal_link_speed:
@@ -91,14 +95,14 @@ class Device:
         self.aio = aio
 
     # Function assigning the roles to devices with some probability and constraints. May be done elsewhere.
-    # def assign_role(self):
-    #     # non-equal prob, depends on proportion worker:committee:leaders.
-    #     pass
+    def assign_role(self):
+        # non-equal prob, depends on proportion worker:committee:leaders.
+        pass
 
     # following assignments are for hard assignments
     def assign_data_role(self):
         self.role = "data owner"
-        self.model = KMeans.init_kmeans(n_clusters=3, verbose=True)
+        self.model = cluster.KMeans(n_clusters=3, max_iter=10)
 
     def assign_committee_role(self):
         self.role = "committee"
@@ -107,8 +111,12 @@ class Device:
         self.role = "leader"
 
     # if anything goes wrong during the learning process of a certain device, can reset
-    def initialize_kmeans_model(self, n_clusters, verbose):
-        self.model = KMeans.init_kmeans(n_clusters=n_clusters, verbose=verbose)
+    def initialize_kmeans_model(self, n_clusters=3, verbose=False):
+        self.model = cluster.KMeans(n_clusters=n_clusters, max_iter=10)
+
+    # should be able to create a genesis block for each device's blockchain, these are synced in the actual simulation.
+    def create_genesis_block(self, data):
+        self.blockchain.create_genesis_block(data=data)
 
     ''' getters '''
 
@@ -310,12 +318,13 @@ class Device:
         data = newest_block.get_data()
         g_centroids = data['centroids']
         # Build a new (local) model using the centroids.
-        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1)
-        self.model.fit(self.train_ds)
+        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
+        self.model.fit(self.dataset)
 
-    def send_update(self):
+    def retrieve_local_centroids(self):
         local_centroids = self.model.cluster_centers_
         # send update to associated committee member
+        return local_centroids
 
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
@@ -390,9 +399,9 @@ class Device:
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
 class DevicesInNetwork(object):
-    def __init__(self, dataset, is_iid, num_devices, num_malicious, network_stability, knock_out_rounds,
+    def __init__(self, is_iid, num_devices, num_malicious, network_stability, knock_out_rounds,
                  lazy_knock_out_rounds, committee_wait_time, committee_threshold, equal_link_speed,
-                 data_transmission_speed, equal_computation_power, check_signature):
+                 data_transmission_speed, equal_computation_power, check_signature, bc=None, dataset=None):
         self.dataset = dataset
         self.is_iid = is_iid
         self.num_devices = num_devices
@@ -407,6 +416,11 @@ class DevicesInNetwork(object):
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
         self.check_signature = check_signature
+        # blockchain
+        if bc is not None:
+            self.blockchain = copy.copy(bc)
+        else:
+            self.blockchain = Blockchain()
         # divide data
         self.devices_set = {}
         self._dataset_allocation()
@@ -420,21 +434,22 @@ class DevicesInNetwork(object):
         # train_data = dataset[0]
         # test_data = dataset[1]
 
-        data_size_train = len(train_data) // self.num_devices
+        # data_size_train = len(train_data) // self.num_devices
         # data_size_test = test_data // self.num_devices
 
         # Depending on is_iid, we allocate an equal amount of records to each device.
+        dfs = np.array_split(train_data, self.num_devices)
+        dfs_labels = np.array_split(labels, self.num_devices)
         if not self.is_iid:
             for i in range(self.num_devices):
                 # divide the data equally
-                local_data = train_data[i*data_size_train:i+1*data_size_train]
-                local_labels = labels[i*data_size_train:i+1*data_size_train]
-                local_dataset = [local_data, local_labels]
+                local_dataset = [dfs[i], dfs_labels[i]]
 
                 device_idx = f'device_{i + 1}'
                 a_device = Device(device_idx, local_dataset, self.network_stability, self.committee_wait_time,
                                   self.committee_threshold, self.equal_link_speed, self.data_transmission_speed,
-                                  self.equal_computation_power, self.check_signature)
+                                  self.equal_computation_power, self.check_signature, bc=self.blockchain)
                 self.devices_set[device_idx] = a_device
+                print(f"Creation of device having idx {device_idx} is done.")
         else:
             raise NotImplementedError  # ToDo: simulate non-iid distribution of data.
