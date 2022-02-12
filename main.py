@@ -211,23 +211,60 @@ if __name__ == '__main__':
                 data_owners_this_round.append(device)
             elif device.return_role() == "leader":
                 leaders_this_round.append(device)
-            elif device.return_role() == "committee member":
+            elif device.return_role() == "committee":
                 committee_members_this_round.append(device)
 
-        # ii. obtain most recent block and perform local learning step
+        # Reset variables for new comm round.
+        # for data_owner in data_owners_this_round:
+        #     data_owner.reset_vars_data_owner()
+        # for comm_member in committee_members_this_round:
+        #     comm_member.reset_vars_committee_member()
+        # for leader in leaders_this_round:
+        #     leader.reset_vars_leader()
+
+        # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
             device.local_update()
+            local_centroids = device.retrieve_local_centroids()
             if args['verbose']:
-                print(device.retrieve_local_centroids())
+                print(local_centroids)
 
-        # iii. perform local learning step and share result with associated committee member
+            # send the result to a committee member in the device's peer list.
+            for peer in device.return_peers():
+                if peer in committee_members_this_round:
+                    peer.associated_data_owners_set.add(device)  # not quite sure whether this step is necessary for now
+            # currently, we simply put each data owner into each committee member's associated set.
+            # if we put a handful of data owners into each committee member's associated set, this code is required.
+            # alternatively, we perform a check_online for each device that is in the peer list, then check for role...
 
-        # iv. committee members validate retrieved updates and aggregate viable results
+        # iii. committee members validate retrieved updates and aggregate viable results
+        for comm_member in committee_members_this_round:
+            latest_block = comm_member.obtain_latest_block()
+            global_centroids = latest_block.data['centroids']
+            # print(comm_member.return_idx() + " having associated data owners ...")
+            for data_owner in comm_member.associated_data_owners_set:
+                # print(data_owner.return_idx())
+                comm_member.local_centroids.append(data_owner.retrieve_local_centroids())
 
-        # v. committee members send updated centroids to every leader
+            print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
 
-        # vi. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+            # validate local updates
+            usable_centroids = []
+            for centroids in comm_member.local_centroids:
+                pass
 
-        # vii. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+            # aggregate usable local updates
+            for centroids in usable_centroids:
+                # do aggregation
+                pass
 
-        # viii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
+        # iv. committee members send updated centroids to every leader
+        # for comm_member in committee_members_this_round:
+        #     latest_block = comm_member.obtain_latest_block()
+        #     global_centroids = latest_block.data['centroids']
+
+        # v. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+
+        # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+
+        # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices

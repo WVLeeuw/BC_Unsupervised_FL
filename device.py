@@ -68,13 +68,14 @@ class Device:
         # Committee members
         self.associated_data_owners_set = set()
         self.performances_this_round = {}
-        self.associated_leaders = set()
+        # self.associated_leaders = set()
+        self.local_centroids = []
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
         self.committee_local_performance = None
         self.received_propagated_block = None
         # Leaders
-        self.leader_associated_members = set()
+        # self.leader_associated_members = set()
         self.mined_block = None
 
         # Keys
@@ -114,10 +115,6 @@ class Device:
     def initialize_kmeans_model(self, n_clusters=3, verbose=False):
         self.model = cluster.KMeans(n_clusters=n_clusters, max_iter=10)
 
-    # should be able to create a genesis block for each device's blockchain, these are synced in the actual simulation.
-    def create_genesis_block(self, data):
-        self.blockchain.create_genesis_block(data=data)
-
     ''' getters '''
 
     def return_idx(self):
@@ -135,14 +132,14 @@ class Device:
     def return_role(self):
         return self.role
 
+    def is_online(self):
+        return self.online
+
     def return_blockchain_obj(self):
         return self.blockchain
 
     def return_pk(self):
         return self.public_key
-
-    def is_online(self):
-        return self.online
 
     def return_link_speed(self):
         return self.link_speed
@@ -202,19 +199,19 @@ class Device:
         else:  # list otherwise
             self.peer_list.difference_update(peers_to_remove)
 
-    # ToDo: implement update model after chain resync and call it after chain resync.
     def switch_online_status(self):
         cur_status = self.online
         online_indicator = random.random()
         if online_indicator < self.network_stability:
             self.online = True
             # if the device has been offline, we update their peer list and resync the chain
-            if not cur_status:
+            if cur_status == False:
                 print(f"{self.idx} has come back online.")
                 # update peer list
                 self.update_peer_list()
                 # resync chain
-                self.resync_chain()
+                if self.resync_chain():
+                    self.update_model_after_resync()
         else:
             self.online = False
             print(f"{self.idx} has gone offline.")
@@ -272,9 +269,6 @@ class Device:
             registrar.add_peers(self)
             return True
 
-    # def check_pow_proof(self, block_to_check):
-    #     pass
-
     # describes how to sync after failed validity or fork
     def resync_chain(self):
         longest_chain = None
@@ -301,6 +295,12 @@ class Device:
         print("Chain could not be resynced.")
         return False
 
+    def update_model_after_resync(self):
+        latest_block = self.obtain_latest_block()
+        g_centroids = latest_block.data['centroids']
+        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids,
+                                    n_init=1, max_iter=10)
+
     def add_block(self, block_to_add):
         self.blockchain.mine(block_to_add)
 
@@ -309,9 +309,6 @@ class Device:
 
     ''' data owner '''
 
-    # def kmeans(self):
-    #     pass
-
     def local_update(self):
         # Retrieve the newest block and specifically the centroids recorded in it.
         newest_block = self.obtain_latest_block()
@@ -319,7 +316,7 @@ class Device:
         g_centroids = data['centroids']
         # Build a new (local) model using the centroids.
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
-        self.model.fit(self.dataset)
+        self.model.fit(self.dataset)  # and perform the update.
 
     def retrieve_local_centroids(self):
         local_centroids = self.model.cluster_centers_
@@ -328,7 +325,7 @@ class Device:
 
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
-        pass
+        self.performance_this_round = float('-inf')
 
     ''' committee member '''
 
@@ -341,22 +338,23 @@ class Device:
     def send_aggr_and_feedback(self):
         pass
 
-    def return_online_associated_devices(self):
-        online_associated_devices = set()
+    def return_online_data_owners(self):
+        online_data_owners = set()
         for peer in self.peer_list:
             if peer.is_online():
                 if peer.return_role() == "data owner":
-                    online_associated_devices.add(peer)
-        return online_associated_devices
+                    online_data_owners.add(peer)
+        return online_data_owners
 
     def update_contribution(self):
         pass
 
     # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
     def reset_vars_committee_member(self):
-        pass
-
-    # send_packet can be the combination of send_aggr and send_feedback
+        self.associated_data_owners_set = set()
+        self.performances_this_round = {}
+        self.committee_local_performance = float('-inf')
+        self.received_propagated_block = None
 
     def verify_block(self):
         pass
@@ -375,9 +373,6 @@ class Device:
     def propose_block(self):
         pass
 
-    def append_block(self):
-        pass
-
     def broadcast_block(self):  # may be unnecessary, considering obtain_latest_block also exists.
         pass
 
@@ -394,7 +389,7 @@ class Device:
 
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
     def reset_vars_leader(self):
-        pass
+        self.mined_block = None
 
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.

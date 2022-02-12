@@ -6,6 +6,7 @@ from sklearn.datasets import load_breast_cancer
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial import distance
 
 from utils import data_utils
 
@@ -126,3 +127,10 @@ def test_real_data_divide_lazy():
     dfs = np.array_split(train, num_devices)  # N.B. np.array_split works for ndarrays as well as for dataframes.
     for df in dfs:
         print(df.head())
+
+
+# Test scipy's euclidean distance function, to be used to find the nearest global centroid from a local centroid.
+def test_euclidean_distance():
+    x = [0, 1]
+    y = [1, 0]
+    print(distance.euclidean(x, y))
