@@ -348,16 +348,33 @@ class Device:
                 nearest_g_centroid = g_centroid
         return nearest_g_centroid
 
+    def match_local_with_global_centroids(self):
+        updates_per_centroid = []
+        for global_centroid in self.retrieve_global_centroids():
+            to_aggregate = []
+            for centroids in self.local_centroids:
+                for centroid in centroids:
+                    if np.array_equal(global_centroid, self.find_nearest_global_centroid(centroid)):
+                        to_aggregate.append(centroid)
+                print("Found average silhouette score of " + str(self.validate_update(centroids)))
+            print("Found " + str(len(to_aggregate)) + " local centroids with which to update the global centroid.")
+            updates_per_centroid.append(to_aggregate)
+        return updates_per_centroid
+
     def aggr_updates(self, updates_per_centroid):
         aggr_centroids = []
         for centroid in updates_per_centroid:
-            if not len(centroid) > 0:
-                aggr_centroids.append([])
-            if not isinstance(centroid, np.ndarray):
+            if not isinstance(centroid, np.ndarray):  # convert to np.ndarray to use numpy functions.
                 centroid = np.array(centroid)
-            avgs = centroid.mean(axis=0)  # taking simple average of 'columns' for now, being the features.
-            aggr_centroids.append(avgs)
+            if len(centroid) <= 0:  # committee member received no updates for this centroid
+                aggr_centroids.append([])
+            else:  # we can use np.mean function to take the averages.
+                avgs = centroid.mean(axis=0)  # taking simple average of 'columns' for now, being the features.
+                aggr_centroids.append(avgs.tolist())
         return aggr_centroids
+
+    def compute_new_global_centroids(self, aggr_centroids):
+        pass
 
     def send_aggr_and_feedback(self):
         pass

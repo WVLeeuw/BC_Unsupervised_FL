@@ -243,17 +243,7 @@ if __name__ == '__main__':
 
             # validate local updates and aggregate usable local updates
             usable_centroids = []  # not sure whether to use this or to simply check some performance measure
-            updates_per_centroid = []  # should rename
-            for global_centroid in global_centroids:
-                to_aggregate = []  # keep track of centroids with which to update current global centroid
-                for centroids in comm_member.local_centroids:
-                    for centroid in centroids:
-                        # print(centroid, global_centroid, comm_member.find_nearest_global_centroid(centroid))
-                        if np.array_equal(global_centroid, comm_member.find_nearest_global_centroid(centroid)):
-                            to_aggregate.append(centroid)
-                    print("Found average silhouette score of " + str(comm_member.validate_update(centroids)))
-                print(len(to_aggregate))
-                updates_per_centroid.append(to_aggregate)
+            updates_per_centroid = comm_member.match_local_with_global_centroids()
             aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
             print(aggr_centroids)
 
