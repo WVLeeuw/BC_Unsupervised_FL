@@ -6,6 +6,8 @@ import copy
 from hashlib import sha256
 from Crypto.PublicKey import RSA
 from sklearn import cluster
+from sklearn.metrics import silhouette_score
+from scipy.spatial.distance import euclidean
 
 from blockchain import Blockchain
 import KMeans
@@ -33,8 +35,6 @@ class Device:
         self.equal_link_speed = equal_link_speed
         self.base_data_transmission_speed = base_data_transmission_speed
         self.equal_computation_power = equal_computation_power
-        # self.knock_out_rounds = knock_out_rounds
-        # self.lazy_knock_out_rounds = lazy_knock_out_rounds
         self.black_list = set()
 
         self.devices_dict = None
@@ -296,10 +296,13 @@ class Device:
         return False
 
     def update_model_after_resync(self):
-        latest_block = self.obtain_latest_block()
-        g_centroids = latest_block.data['centroids']
+        g_centroids = self.retrieve_global_centroids()
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids,
                                     n_init=1, max_iter=10)
+
+    def retrieve_global_centroids(self):
+        latest_block = self.obtain_latest_block()
+        return latest_block.data['centroids']
 
     def add_block(self, block_to_add):
         self.blockchain.mine(block_to_add)
@@ -329,11 +332,32 @@ class Device:
 
     ''' committee member '''
 
-    def validate_update(self):
-        pass
+    def validate_update(self, local_centroids):
+        self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=10)
+        cluster_labels = self.model.fit_predict(self.dataset)
+        silhouette_avg = silhouette_score(self.dataset, cluster_labels)
+        return silhouette_avg
 
-    def aggr_update(self):
-        pass
+    def find_nearest_global_centroid(self, centroid):
+        g_centroids = self.retrieve_global_centroids()
+        min_dist = float('inf')
+        nearest_g_centroid = None  # initialize as []?
+        for g_centroid in g_centroids:
+            if euclidean(g_centroid, centroid) < min_dist:
+                min_dist = euclidean(g_centroid, centroid)
+                nearest_g_centroid = g_centroid
+        return nearest_g_centroid
+
+    def aggr_updates(self, updates_per_centroid):
+        aggr_centroids = []
+        for centroid in updates_per_centroid:
+            if not len(centroid) > 0:
+                aggr_centroids.append([])
+            if not isinstance(centroid, np.ndarray):
+                centroid = np.array(centroid)
+            avgs = centroid.mean(axis=0)  # taking simple average of 'columns' for now, being the features.
+            aggr_centroids.append(avgs)
+        return aggr_centroids
 
     def send_aggr_and_feedback(self):
         pass
@@ -394,15 +418,13 @@ class Device:
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
 class DevicesInNetwork(object):
-    def __init__(self, is_iid, num_devices, num_malicious, network_stability, knock_out_rounds,
-                 lazy_knock_out_rounds, committee_wait_time, committee_threshold, equal_link_speed,
-                 data_transmission_speed, equal_computation_power, check_signature, bc=None, dataset=None):
+    def __init__(self, is_iid, num_devices, num_malicious, network_stability, committee_wait_time, committee_threshold,
+                 equal_link_speed, data_transmission_speed, equal_computation_power, check_signature, bc=None,
+                 dataset=None):
         self.dataset = dataset
         self.is_iid = is_iid
         self.num_devices = num_devices
         self.num_malicious = num_malicious
-        self.knock_out_rounds = knock_out_rounds
-        self.lazy_knock_out_rounds = lazy_knock_out_rounds
         self.network_stability = network_stability
         self.equal_link_speed = equal_link_speed
         self.equal_computation_power = equal_computation_power

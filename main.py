@@ -38,10 +38,6 @@ parser.add_argument('-le', '--num_local_epochs', type=int, default=1, help='numb
                                                                            'acquisition of local update')
 
 # BC attributes (consensus & committee parameters)
-parser.add_argument('-ko', '--knock_out_rounds', type=int, default=6, help='amount of rounds after which to kick a '
-                                                                           'malicious data owner')
-parser.add_argument('-lo', '--lazy_knock_out_rounds', type=int, default=10, help='amount of rounds after which to '
-                                                                                 'kick a non-responsive data owner')
 parser.add_argument('-vh', '--validator_threshold', type=float, default=1.0, help='threshold value of a difference in '
                                                                                   'accuracy with which to identify '
                                                                                   'malicious data owners')
@@ -150,8 +146,6 @@ if __name__ == '__main__':
 
     devices_in_network = DevicesInNetwork(is_iid=args['IID'], num_devices=num_devices, num_malicious=num_malicious,
                                           network_stability=args['network_stability'],
-                                          knock_out_rounds=args['knock_out_rounds'],
-                                          lazy_knock_out_rounds=args['lazy_knock_out_rounds'],
                                           committee_wait_time=args['committee_member_wait_time'],
                                           committee_threshold=args['committee_member_threshold'],
                                           equal_link_speed=args['equal_link_speed'],
@@ -239,8 +233,7 @@ if __name__ == '__main__':
 
         # iii. committee members validate retrieved updates and aggregate viable results
         for comm_member in committee_members_this_round:
-            latest_block = comm_member.obtain_latest_block()
-            global_centroids = latest_block.data['centroids']
+            global_centroids = comm_member.retrieve_global_centroids()
             # print(comm_member.return_idx() + " having associated data owners ...")
             for data_owner in comm_member.associated_data_owners_set:
                 # print(data_owner.return_idx())
@@ -248,15 +241,21 @@ if __name__ == '__main__':
 
             print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
 
-            # validate local updates
-            usable_centroids = []
-            for centroids in comm_member.local_centroids:
-                pass
-
-            # aggregate usable local updates
-            for centroids in usable_centroids:
-                # do aggregation
-                pass
+            # validate local updates and aggregate usable local updates
+            usable_centroids = []  # not sure whether to use this or to simply check some performance measure
+            updates_per_centroid = []  # should rename
+            for global_centroid in global_centroids:
+                to_aggregate = []  # keep track of centroids with which to update current global centroid
+                for centroids in comm_member.local_centroids:
+                    for centroid in centroids:
+                        # print(centroid, global_centroid, comm_member.find_nearest_global_centroid(centroid))
+                        if np.array_equal(global_centroid, comm_member.find_nearest_global_centroid(centroid)):
+                            to_aggregate.append(centroid)
+                    print("Found average silhouette score of " + str(comm_member.validate_update(centroids)))
+                print(len(to_aggregate))
+                updates_per_centroid.append(to_aggregate)
+            aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
+            print(aggr_centroids)
 
         # iv. committee members send updated centroids to every leader
         # for comm_member in committee_members_this_round:
