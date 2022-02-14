@@ -356,7 +356,7 @@ class Device:
                 for centroid in centroids:
                     if np.array_equal(global_centroid, self.find_nearest_global_centroid(centroid)):
                         to_aggregate.append(centroid)
-                print("Found average silhouette score of " + str(self.validate_update(centroids)))
+                # print("Found average silhouette score of " + str(self.validate_update(centroids)))
             print("Found " + str(len(to_aggregate)) + " local centroids with which to update the global centroid.")
             updates_per_centroid.append(to_aggregate)
         return updates_per_centroid
@@ -370,13 +370,17 @@ class Device:
                 avgs = updates_per_centroid[i].mean(axis=0)  # taking simple average of 'columns' for now.
                 aggr_centroids.append(avgs.tolist())
             else:  # committee member received no updates for this centroid
-                centroid_idx = updates_per_centroid.index(updates_per_centroid[i])
-                corresponding_g_centroid = self.retrieve_global_centroids()[centroid_idx]
-                aggr_centroids.append(corresponding_g_centroid)  # should put the global centroid here.
+                aggr_centroids.append(self.retrieve_global_centroids()[i])  # should put the global centroid here.
         return np.asarray(aggr_centroids)
 
     def compute_new_global_centroids(self, aggr_centroids):
-        pass
+        g_centroids = self.retrieve_global_centroids()
+        assert len(g_centroids) == len(aggr_centroids), "Number of global centroids not equal to aggregated centroids."
+        new_g_centroids = []
+        for i in range(len(g_centroids)):
+            new_g_centroids.append(.5 * g_centroids[i] + .5 * aggr_centroids[i])  # Simple update rule for now.
+        # print(self.validate_update(np.asarray(new_g_centroids)))
+        return np.asarray(new_g_centroids)
 
     def send_aggr_and_feedback(self):
         pass
@@ -389,10 +393,15 @@ class Device:
                     online_data_owners.add(peer)
         return online_data_owners
 
-    def update_contribution(self, device_idx, score):
+    def update_contribution(self, idx_update):
+        # idx_update is a tuple being device_idx, local centroids
+        device_idx = idx_update[0]
+        local_centroids = idx_update[1]
+        score = self.validate_update(local_centroids)
         for peer in self.peer_list:
             if peer.return_idx() == device_idx:
-                if score < 0:
+                # using performance of global model to compare with for now
+                if score < self.validate_update(self.retrieve_global_centroids()):
                     peer.contribution -= 1
                 else:
                     peer.contribution += 1

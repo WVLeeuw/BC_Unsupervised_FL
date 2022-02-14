@@ -235,11 +235,16 @@ if __name__ == '__main__':
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             # print(comm_member.return_idx() + " having associated data owners ...")
+            updates_per_idx = []
             for data_owner in comm_member.associated_data_owners_set:
                 # print(data_owner.return_idx())
                 comm_member.local_centroids.append(data_owner.retrieve_local_centroids())
+                updates_per_idx.append((data_owner.return_idx(), data_owner.retrieve_local_centroids()))  # tuple
 
             print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
+
+            for idx_update in updates_per_idx:
+                comm_member.update_contribution(idx_update)
 
             # validate local updates and aggregate usable local updates
             usable_centroids = []  # not sure whether to use this or to simply check some performance measure
@@ -249,6 +254,7 @@ if __name__ == '__main__':
             print(str(comm_member.validate_update(aggr_centroids)) +
                   " compared to previous global model performance of " +
                   str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
+            print(comm_member.compute_new_global_centroids(aggr_centroids))
 
         # iv. committee members send updated centroids to every leader
         # for comm_member in committee_members_this_round:
