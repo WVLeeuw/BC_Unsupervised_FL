@@ -314,9 +314,7 @@ class Device:
 
     def local_update(self):
         # Retrieve the newest block and specifically the centroids recorded in it.
-        newest_block = self.obtain_latest_block()
-        data = newest_block.get_data()
-        g_centroids = data['centroids']
+        g_centroids = self.retrieve_global_centroids()
         # Build a new (local) model using the centroids.
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
         self.model.fit(self.dataset)  # and perform the update.
@@ -332,10 +330,12 @@ class Device:
 
     ''' committee member '''
 
+    # ToDo: rewrite s.t. we also take the device idx for update_contribution.
     def validate_update(self, local_centroids):
         self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=10)
         cluster_labels = self.model.fit_predict(self.dataset)
         silhouette_avg = silhouette_score(self.dataset, cluster_labels)
+        # self.update_contribution(silhouette_avg)
         return silhouette_avg
 
     def find_nearest_global_centroid(self, centroid):
@@ -363,15 +363,17 @@ class Device:
 
     def aggr_updates(self, updates_per_centroid):
         aggr_centroids = []
-        for centroid in updates_per_centroid:
-            if not isinstance(centroid, np.ndarray):  # convert to np.ndarray to use numpy functions.
-                centroid = np.array(centroid)
-            if len(centroid) <= 0:  # committee member received no updates for this centroid
-                aggr_centroids.append([])
-            else:  # we can use np.mean function to take the averages.
-                avgs = centroid.mean(axis=0)  # taking simple average of 'columns' for now, being the features.
+        for i in range(len(updates_per_centroid)):
+            if not isinstance(updates_per_centroid[i], np.ndarray):  # convert to np.ndarray to use numpy functions.
+                updates_per_centroid[i] = np.array(updates_per_centroid[i])
+            if len(updates_per_centroid[i]) > 0:  # we can use np.mean function to take the averages.
+                avgs = updates_per_centroid[i].mean(axis=0)  # taking simple average of 'columns' for now.
                 aggr_centroids.append(avgs.tolist())
-        return aggr_centroids
+            else:  # committee member received no updates for this centroid
+                centroid_idx = updates_per_centroid.index(updates_per_centroid[i])
+                corresponding_g_centroid = self.retrieve_global_centroids()[centroid_idx]
+                aggr_centroids.append(corresponding_g_centroid)  # should put the global centroid here.
+        return np.asarray(aggr_centroids)
 
     def compute_new_global_centroids(self, aggr_centroids):
         pass
@@ -387,8 +389,13 @@ class Device:
                     online_data_owners.add(peer)
         return online_data_owners
 
-    def update_contribution(self):
-        pass
+    def update_contribution(self, device_idx, score):
+        for peer in self.peer_list:
+            if peer.return_idx() == device_idx:
+                if score < 0:
+                    peer.contribution -= 1
+                else:
+                    peer.contribution += 1
 
     # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
     def reset_vars_committee_member(self):

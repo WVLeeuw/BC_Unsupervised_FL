@@ -246,6 +246,9 @@ if __name__ == '__main__':
             updates_per_centroid = comm_member.match_local_with_global_centroids()
             aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
             print(aggr_centroids)
+            print(str(comm_member.validate_update(aggr_centroids)) +
+                  " compared to previous global model performance of " +
+                  str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
 
         # iv. committee members send updated centroids to every leader
         # for comm_member in committee_members_this_round:
