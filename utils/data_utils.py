@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 
 project_dir = os.path.dirname(os.getcwd())
 
+
 # This file describes utility functions for loading and creating (dummy) datasets.
 
 
@@ -21,6 +22,8 @@ def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True
     return df_train, df_test
 
 
+# ToDo: fix this function returning NoneType objects for some reason.
+# Note that NoneType is not returned when create_blobs() is called, rather than load_data() going to default case.
 def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, prop_test=None, dims=2, samples=100,
               clusters=3, verbose=False):
     # can we assert that the dataset is in a predefined list of strings? If it's not, we return blobs.
@@ -34,39 +37,94 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
         if dataset == 'iris':
             iris = load_iris()
             df = pd.DataFrame(iris.data, columns=iris.feature_names)
-            if split_train_test and prop_test is not None:
-                df_train, df_test = train_test_split(df, test_size=prop_test)
-                # ToDo: actually split between devices
-                if is_iid:
-                    return NotImplementedError
-                else:
-                    return df_train, df_test
+            labels = iris.target
+            return split_data(df, labels, num_devices, split_train_test, prop_test, is_iid)
+
         if dataset == 'breast_cancer':
             breast_cancer = load_breast_cancer()
             df = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
+            labels = breast_cancer.target
+            return split_data(df, labels, num_devices, split_train_test, prop_test, is_iid)
+
+        if dataset == 'heart disease':
+            df = pd.read_csv("../data/heart_disease_cleveland.csv")  # not sure how to retrieve just labels here...
             if split_train_test and prop_test is not None:
                 df_train, df_test = train_test_split(df, test_size=prop_test)
-                # ToDo: actually split between devices
+                if not is_iid:
+                    return NotImplementedError
+                else:
+                    return np.array_split(df_train, num_devices), np.array_split(df_test, num_devices)
+            elif split_train_test:
+                df_train, df_test = train_test_split(df, test_size=.2)
+                if not is_iid:
+                    return NotImplementedError
+                else:
+                    return np.array_split(df_train, num_devices), np.array_split(df_test, num_devices)
+            else:
+                return np.array_split(df, num_devices)
+
+        if dataset == 'forest types':
+            df = pd.read_csv("../data/forest_covertypes.csv")  # not sure how to retrieve just labels here...
+            if split_train_test and prop_test is not None:
+                df_train, df_test = train_test_split(df, test_size=prop_test)
+                if not is_iid:
+                    return NotImplementedError
+                else:
+                    return np.array_split(df_train, num_devices), np.array_split(df_test, num_devices)
+            elif split_train_test:
+                df_train, df_test = train_test_split(df, test_size=.2)
+                if not is_iid:
+                    return NotImplementedError
+                else:
+                    return np.array_split(df_train, num_devices), np.array_split(df_test, num_devices)
+            else:
                 if is_iid:
                     return NotImplementedError
                 else:
-                    return df_train, df_test
-        if dataset == 'heart disease':
-            df = pd.read_csv("../data/heart_disease_cleveland.csv")
-            pass
-        if dataset == 'forest types':
-            df = pd.read_csv("../data/forest_covertypes.csv")
-            pass
-        else:
+                    return np.array_split(df, num_devices)
+
+        else:  # default case
             print("Generating blobs...")
             create_blobs(dims=dims, samples=samples, clusters=clusters, split_train_test=split_train_test,
                          prop_test=prop_test, is_iid=is_iid, num_devices=num_devices, verbose=verbose)
 
 
+def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, is_iid=True):
+    if not is_iid:
+        if split_train_test:
+            if prop_test is not None:
+                prop = prop_test
+            else:
+                prop = .2
+            num_test = int(prop * len(df))
+            order_train = np.argsort(labels[num_test:])
+            order_test = np.argsort(labels[:num_test])
+            df_train = df[order_train]
+            df_test = df[order_test]
+            return np.array_split(df_test, num_devices), np.array_split(df_train, num_devices), \
+                np.array_split(labels[:num_test][order_test], num_devices), \
+                np.array_split(labels[num_test:][order_train], num_devices)  # test, train, y_test, y_train
+        else:
+            order = np.argsort(labels)
+            return np.array_split(df[order], num_devices), np.array_split(labels[order], num_devices)  # X, y
+    elif is_iid:
+        if split_train_test:
+            if prop_test is not None:
+                prop = prop_test
+            else:
+                prop = .2
+            num_test = int(prop * len(df))
+            return np.array_split(df[:num_test], num_devices), np.array_split(df[num_test:], num_devices), \
+                np.array_split(labels[:num_test], num_devices), np.array_split(labels[num_test:], num_devices)
+            # test, train, y_test, y_train
+        else:
+            return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+
+
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):
     num_clients = clients_per_cluster * clusters
     # create gaussian data set, per client one mean
-    means = np.arange(1, clusters+1)
+    means = np.arange(1, clusters + 1)
     means = np.tile(A=means, reps=clients_per_cluster)
     noise = np.random.normal(loc=0.0, scale=scale, size=(num_clients, samples_each, dims))
     data = np.expand_dims(np.expand_dims(means, axis=1), axis=2) + noise
@@ -88,31 +146,4 @@ def create_blobs(dims=2, samples=100, clusters=3, split_train_test=False, prop_t
         print(X.shape)
         print(len(y), y)
 
-    if split_train_test:
-        if prop_test is not None:
-            prop = prop_test
-        else:
-            prop = .2
-        num_test = int(prop*len(X))
-        return X[:num_test], X[num_test:], y[:num_test], y[num_test:]  # test, train, y_test, y_train
-
-    return X, y
-
-
-# def load_federated_dummy(seed=None, verbose=False, clients_per_cluster=10, clusters=10):
-#     np.random.seed(seed)
-#     x = {}
-#     ids = {}
-#     data, means = create_dummy_data(clients_per_cluster=2*clients_per_cluster, clusters=clusters, verbose=verbose)
-#     mid = clients_per_cluster * clusters
-#     x["train"], ids["train"] = data[:mid], means[:mid]
-#     x["test"], ids["test"] = data[mid:], means[mid:]
-#     print(len(x['train']), x['train'][0].shape)
-#     return x, ids
-#
-#
-# def load_federated(limit_csv=None, verbose=False, seed=None, dummy=False, clusters=None):
-#     if dummy:
-#         return load_federated_dummy(seed=seed, verbose=verbose, clusters=clusters)
-#     else:
-#         raise NotImplementedError
+    return split_data(X, y, num_devices, split_train_test, prop_test, is_iid)

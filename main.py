@@ -29,7 +29,7 @@ parser.add_argument('-lr', '--learning_rate', type=float, default=.01, help='lea
 parser.add_argument('-ncomm', '--num_comm', type=int, default=100, help='number of communication rounds')
 parser.add_argument('-nd', '--num_devices', type=int, default=20, help='number of devices in the simulation')
 parser.add_argument('-nm', '--num_malicious', type=int, default=0, help='number of malicious devices')
-parser.add_argument('-iid', '--IID', type=int, default=0, help='whether to allocate data in iid setting')
+parser.add_argument('-iid', '--IID', type=int, default=1, help='whether to allocate data in iid setting')
 parser.add_argument('-gc', '--num_global_centroids', type=int, default=3, help='number of centroids in the globally '
                                                                                'trained model')
 parser.add_argument('-lc', '--num_local_centroids', type=int, default=3, help='number of centroids in locally trained '
@@ -135,8 +135,8 @@ if __name__ == '__main__':
     # 5. create genesis block and devices in the network, dummy data for now
     # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
     blobs, labels = data_utils.create_blobs()
-    min_x, max_x = min(blobs[:, 0]), max(blobs[:, 0])
-    min_y, max_y = min(blobs[:, 1]), max(blobs[:, 1])
+    min_x, max_x = np.min(blobs[:][0]), np.max(blobs[:][0])
+    min_y, max_y = np.min(blobs[:][1]), np.max(blobs[:][1])
     values = [[min_x, max_x], [min_y, max_y]]
     n_dims, n_clusters = 2, args['num_global_centroids']
     data = dict()
@@ -157,7 +157,8 @@ if __name__ == '__main__':
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
         # initialize for each device their kmeans model
-        device.initialize_kmeans_model()
+        device.initialize_kmeans_model(n_clusters=args['num_local_centroids'])
+        # num_local_centroids should also be a parameter of the device constructor.
         # helper function simulating registration, effectively a setter in Device class
         device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
         # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
@@ -209,12 +210,12 @@ if __name__ == '__main__':
                 committee_members_this_round.append(device)
 
         # Reset variables for new comm round.
-        # for data_owner in data_owners_this_round:
-        #     data_owner.reset_vars_data_owner()
-        # for comm_member in committee_members_this_round:
-        #     comm_member.reset_vars_committee_member()
-        # for leader in leaders_this_round:
-        #     leader.reset_vars_leader()
+        for data_owner in data_owners_this_round:
+            data_owner.reset_vars_data_owner()
+        for comm_member in committee_members_this_round:
+            comm_member.reset_vars_committee_member()
+        for leader in leaders_this_round:
+            leader.reset_vars_leader()
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:

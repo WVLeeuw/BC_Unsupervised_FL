@@ -62,40 +62,40 @@ def test_data_load_numpy():
     print(means)
 
 
-def test_data_load_make_blobs():
-    X, y = data_utils.create_blobs(dims=2, verbose=True)
-    plt.scatter(X[:, 0], X[:, 1])
-    plt.show()
+# def test_data_load_make_blobs():
+#     X, y = data_utils.create_blobs(dims=2, verbose=True)
+#     plt.scatter(X[:, 0], X[:, 1])
+#     plt.show()
 
 
-def test_make_blobs_divide():
-    X, y = data_utils.create_blobs(dims=2, samples=300, verbose=True)
-    samples_per_client = 100
-    x1, x2, x3 = np.array_split(X, len(X)/samples_per_client)
-    plt.scatter(x1[:, 0], x1[:, 1], color='blue')
-    plt.scatter(x2[:, 0], x2[:, 1], color='red')
-    plt.scatter(x3[:, 0], x3[:, 1], color='pink')
-    plt.show()
+# def test_make_blobs_divide():
+#     X, y = data_utils.create_blobs(dims=2, samples=300, verbose=True)
+#     samples_per_client = 100
+#     x1, x2, x3 = np.array_split(X, len(X)/samples_per_client)
+#     plt.scatter(x1[:, 0], x1[:, 1], color='blue')
+#     plt.scatter(x2[:, 0], x2[:, 1], color='red')
+#     plt.scatter(x3[:, 0], x3[:, 1], color='pink')
+#     plt.show()
 
 
-def test_make_blobs_split():
-    X_test, X_train, y_test, y_train = data_utils.create_blobs(dims=2, samples=300, split_train_test=True)
-    print(X_train.shape)
-    print(X_test.shape)
+# def test_make_blobs_split():
+#     X_test, X_train, y_test, y_train = data_utils.create_blobs(dims=2, samples=300, split_train_test=True)
+#     print(X_train.shape)
+#     print(X_test.shape)
 
 
-def test_make_blobs_divide_alternative():
-    X, y = data_utils.create_blobs(dims=2, samples=300)
-    num_devices = 3
-    data_size_local = len(X) // num_devices
-
-    datasets = []
-    for i in range(num_devices):
-        # print(i, i+1)
-        # print(i*data_size_local, (i+1)*data_size_local)
-        local_data = X[i*data_size_local:(i+1)*data_size_local]
-        print(local_data.shape)
-        datasets.append(local_data)
+# def test_make_blobs_divide_alternative():
+#     X, y = data_utils.create_blobs(dims=2, samples=300)
+#     num_devices = 3
+#     data_size_local = len(X) // num_devices
+#
+#     datasets = []
+#     for i in range(num_devices):
+#         # print(i, i+1)
+#         # print(i*data_size_local, (i+1)*data_size_local)
+#         local_data = X[i*data_size_local:(i+1)*data_size_local]
+#         print(local_data.shape)
+#         datasets.append(local_data)
 
     # print(datasets)
 
@@ -134,3 +134,8 @@ def test_euclidean_distance():
     x = [0, 1]
     y = [1, 0]
     print(distance.euclidean(x, y))
+
+
+def test_non_iid_synth_data():
+    dfs, labels = data_utils.create_blobs()
+    print(dfs[0][:5], labels[0][:5])

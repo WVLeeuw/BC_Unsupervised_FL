@@ -65,18 +65,20 @@ class Device:
         # Data owners
         self.performance_this_round = float('-inf')
         self.local_update_time = None
+        self.local_total_epoch = None
         # Committee members
         self.associated_data_owners_set = set()
         self.performances_this_round = {}
         # self.associated_leaders = set()
-        self.local_centroids = []
+        self.local_centroids = []  # obtained local centroids from data owners.
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
-        self.committee_local_performance = None
+        self.committee_local_performance = None  # this can be set after validation of new global centroids.
         self.received_propagated_block = None
         # Leaders
         # self.leader_associated_members = set()
         self.mined_block = None
+        self.received_votes = None
 
         # Keys
         self.modulus = None
@@ -318,6 +320,7 @@ class Device:
         # Build a new (local) model using the centroids.
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
         self.model.fit(self.dataset)  # and perform the update.
+        # performance = self.model.inertia_
 
     def retrieve_local_centroids(self):
         local_centroids = self.model.cluster_centers_
@@ -327,6 +330,8 @@ class Device:
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
         self.performance_this_round = float('-inf')
+        self.local_update_time = None
+        self.local_total_epoch = 0
 
     ''' committee member '''
 
@@ -365,7 +370,7 @@ class Device:
         aggr_centroids = []
         for i in range(len(updates_per_centroid)):
             if not isinstance(updates_per_centroid[i], np.ndarray):  # convert to np.ndarray to use numpy functions.
-                updates_per_centroid[i] = np.array(updates_per_centroid[i])
+                updates_per_centroid[i] = np.asarray(updates_per_centroid[i])
             if len(updates_per_centroid[i]) > 0:  # we can use np.mean function to take the averages.
                 avgs = updates_per_centroid[i].mean(axis=0)  # taking simple average of 'columns' for now.
                 aggr_centroids.append(avgs.tolist())
@@ -447,6 +452,8 @@ class Device:
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
     def reset_vars_leader(self):
         self.mined_block = None
+        self.received_votes = None
+        self.received_propagated_block = None
 
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
@@ -478,7 +485,7 @@ class DevicesInNetwork(object):
     # For now, let us allocate a (simple) testing dataset.
     def _dataset_allocation(self):
         # read dataset
-        train_data, labels = data_utils.create_blobs()
+        train_data, labels = data_utils.create_blobs(num_devices=self.num_devices, is_iid=self.is_iid)
 
         # then divide across devices
         # train_data = dataset[0]
@@ -488,18 +495,15 @@ class DevicesInNetwork(object):
         # data_size_test = test_data // self.num_devices
 
         # Depending on is_iid, we allocate an equal amount of records to each device.
-        dfs = np.array_split(train_data, self.num_devices)
-        dfs_labels = np.array_split(labels, self.num_devices)
-        if not self.is_iid:
-            for i in range(self.num_devices):
-                # divide the data equally
-                local_dataset = [dfs[i], dfs_labels[i]]
+        # dfs = np.array_split(train_data, self.num_devices)
+        # dfs_labels = np.array_split(labels, self.num_devices)
+        for i in range(self.num_devices):
+            # divide the data equally
+            local_dataset = [train_data[i], labels[i]]
 
-                device_idx = f'device_{i + 1}'
-                a_device = Device(device_idx, local_dataset, self.network_stability, self.committee_wait_time,
-                                  self.committee_threshold, self.equal_link_speed, self.data_transmission_speed,
-                                  self.equal_computation_power, self.check_signature, bc=self.blockchain)
-                self.devices_set[device_idx] = a_device
-                print(f"Creation of device having idx {device_idx} is done.")
-        else:
-            raise NotImplementedError  # ToDo: simulate non-iid distribution of data.
+            device_idx = f'device_{i + 1}'
+            a_device = Device(device_idx, local_dataset, self.network_stability, self.committee_wait_time,
+                              self.committee_threshold, self.equal_link_speed, self.data_transmission_speed,
+                              self.equal_computation_power, self.check_signature, bc=self.blockchain)
+            self.devices_set[device_idx] = a_device
+            print(f"Creation of device having idx {device_idx} is done.")
