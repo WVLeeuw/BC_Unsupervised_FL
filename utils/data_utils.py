@@ -26,13 +26,12 @@ def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True
 # Note that NoneType is not returned when create_blobs() is called, rather than load_data() going to default case.
 def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, prop_test=None, dims=2, samples=100,
               clusters=3, verbose=False):
-    # can we assert that the dataset is in a predefined list of strings? If it's not, we return blobs.
     eligible_datasets = ['iris', 'breast cancer', 'heart disease', 'forest types', 'blobs']
     if dataset not in eligible_datasets:
-        print("Could not retrieve the dataset that was requested.")
+        print("No dataset was requested or the requested dataset could not be retrieved.")
         print("Defaulting to generating blobs...")
-        create_blobs(dims=dims, samples=samples, clusters=clusters, split_train_test=split_train_test,
-                     prop_test=prop_test, is_iid=is_iid, num_devices=num_devices, verbose=verbose)
+        return create_blobs(dims=dims, samples=samples, clusters=clusters, split_train_test=split_train_test,
+                            prop_test=prop_test, is_iid=is_iid, num_devices=num_devices, verbose=verbose)
     else:
         if dataset == 'iris':
             iris = load_iris()
@@ -40,7 +39,7 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
             labels = iris.target
             return split_data(df, labels, num_devices, split_train_test, prop_test, is_iid)
 
-        if dataset == 'breast_cancer':
+        if dataset == 'breast cancer':
             breast_cancer = load_breast_cancer()
             df = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
             labels = breast_cancer.target
@@ -48,6 +47,7 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
 
         if dataset == 'heart disease':
             df = pd.read_csv("../data/heart_disease_cleveland.csv")  # not sure how to retrieve just labels here...
+            # this implementation does not use split_data for now, because it would require us to extract labels.
             if split_train_test and prop_test is not None:
                 df_train, df_test = train_test_split(df, test_size=prop_test)
                 if not is_iid:
@@ -65,6 +65,7 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
 
         if dataset == 'forest types':
             df = pd.read_csv("../data/forest_covertypes.csv")  # not sure how to retrieve just labels here...
+            # this implementation does not use split_data for now, because it would require us to extract labels.
             if split_train_test and prop_test is not None:
                 df_train, df_test = train_test_split(df, test_size=prop_test)
                 if not is_iid:
@@ -119,6 +120,8 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             # test, train, y_test, y_train
         else:
             return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+    else:  # this case should never be reached, but we include it anyway
+        return np.array_split(df, num_devices), np.array_split(labels, num_devices)
 
 
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):

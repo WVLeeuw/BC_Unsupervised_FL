@@ -71,12 +71,14 @@ class Device:
         self.performances_this_round = {}
         # self.associated_leaders = set()
         self.local_centroids = []  # obtained local centroids from data owners.
+        self.updated_centroids = []
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
         self.committee_local_performance = None  # this can be set after validation of new global centroids.
         self.received_propagated_block = None
         # Leaders
-        # self.leader_associated_members = set()
+        self.associated_comm_members = set()
+        self.new_centroids = []
         self.mined_block = None
         self.received_votes = None
 
@@ -385,9 +387,12 @@ class Device:
         for i in range(len(g_centroids)):
             new_g_centroids.append(.5 * g_centroids[i] + .5 * aggr_centroids[i])  # Simple update rule for now.
         # print(self.validate_update(np.asarray(new_g_centroids)))
+        self.updated_centroids = np.asarray(new_g_centroids)
         return np.asarray(new_g_centroids)
 
     def send_aggr_and_feedback(self):
+        # requires update_contribution to alter a class variable (for Device type committee member).
+        # this class variable can be retrieved here to send both the updated centroids and feedback per device.
         pass
 
     def return_online_data_owners(self):

@@ -32,7 +32,7 @@ class Blockchain:
         h = hashlib.sha256()
         h.update(''.encode('utf-8'))
         # data = np.zeros((2, 2))
-        genesis = Block(data=data, previous_hash=h, index=0)
+        genesis = Block(data=data, previous_hash=h)
         genesis.mine(self.difficulty)
         self.blocks.append(genesis)
 

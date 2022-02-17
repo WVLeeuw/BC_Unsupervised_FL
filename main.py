@@ -1,9 +1,12 @@
+import hashlib
+
 import block
 from block import Block
 from blockchain import Blockchain
 from device import Device, DevicesInNetwork
 import KMeans
 from utils import data_utils
+import matplotlib.pyplot as plt
 
 import os
 import sys
@@ -140,7 +143,8 @@ if __name__ == '__main__':
     values = [[min_x, max_x], [min_y, max_y]]
     n_dims, n_clusters = 2, args['num_global_centroids']
     data = dict()
-    data['centroids'] = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
+    init_centroids = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
+    data['centroids'] = init_centroids
     bc = Blockchain()
     bc.create_genesis_block(data=data)
 
@@ -233,10 +237,12 @@ if __name__ == '__main__':
             # alternatively, we perform a check_online for each device that is in the peer list, then check for role...
 
         # iii. committee members validate retrieved updates and aggregate viable results
+        updated_centroids = []
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             # print(comm_member.return_idx() + " having associated data owners ...")
             updates_per_idx = []
+            # alternatively, we can use return_online_data_owners per committee member.
             for data_owner in comm_member.associated_data_owners_set:
                 # print(data_owner.return_idx())
                 comm_member.local_centroids.append(data_owner.retrieve_local_centroids())
@@ -256,14 +262,45 @@ if __name__ == '__main__':
                   " compared to previous global model performance of " +
                   str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
             print(comm_member.compute_new_global_centroids(aggr_centroids))
+            updated_centroids.append(comm_member.compute_new_global_centroids(aggr_centroids))
+
+            # Match the committee members with all leaders by putting them in their associated set.
+            # alternatively, we can use return_online_committee_members per leader.
+            for peer in comm_member.return_peers():
+                if peer in leaders_this_round:
+                    peer.associated_comm_members.add(comm_member)
+
+        # # Code for plotting intermediate results compared to the initial centroids.
+        # for i in range(len(blobs)):
+        #     plt.scatter(blobs[i][:, 0], blobs[i][:, 1])
+        # plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='purple')
+        # # could do this for every aggregate
+        # plt.scatter(updated_centroids[0][:, 0], updated_centroids[0][:, 1], color='k')
+        # plt.show()
 
         # iv. committee members send updated centroids to every leader
-        # for comm_member in committee_members_this_round:
-        #     latest_block = comm_member.obtain_latest_block()
-        #     global_centroids = latest_block.data['centroids']
+        for leader in leaders_this_round:
+            # check whether the committee members are (successfully) associating with the leader.
+            print([associated_member.return_idx() for associated_member in leader.associated_comm_members])
+            for comm_member in leader.associated_comm_members:
+                # comm_members share their aggregates with the leader.
+                # if no aggregate is obtained for some committee members, leaders give negative feedback.
+                # otherwise, feedback is positive (only depends on retrieval, not quality of centroids).
+                leader.new_centroids.append(comm_member.updated_centroids)
+            print(leader.new_centroids)  # if each comm member sees every update, these should all be equal.
 
-        # v. leaders build candidate blocks using the obtained centroids and send it to committee members for approval
+            # v. leaders build candidate blocks using the obtained centroids and send it to committee members for
+            # approval.
+            bc = leader.return_blockchain_obj()
+            data = dict()
+            previous_hash = leader.obtain_latest_block().get_hash()
+            block = Block(data=data, previous_hash=previous_hash)
 
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
+        for comm_member in committee_members_this_round:
+            pass  # do voting
 
         # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
+        winning_block = False
+        if winning_block:
+            pass  # append the block and propagate it.

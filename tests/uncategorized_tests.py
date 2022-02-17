@@ -68,14 +68,12 @@ def test_data_load_numpy():
 #     plt.show()
 
 
-# def test_make_blobs_divide():
-#     X, y = data_utils.create_blobs(dims=2, samples=300, verbose=True)
-#     samples_per_client = 100
-#     x1, x2, x3 = np.array_split(X, len(X)/samples_per_client)
-#     plt.scatter(x1[:, 0], x1[:, 1], color='blue')
-#     plt.scatter(x2[:, 0], x2[:, 1], color='red')
-#     plt.scatter(x3[:, 0], x3[:, 1], color='pink')
-#     plt.show()
+def test_make_blobs_divide():
+    X, y = data_utils.create_blobs(dims=2, samples=300, verbose=True)
+    colors = ['blue', 'red', 'pink']
+    for i in range(len(X)):
+        plt.scatter(X[i][:, 0], X[i][:, 1], color=colors[i])
+    plt.show()
 
 
 # def test_make_blobs_split():
@@ -137,5 +135,19 @@ def test_euclidean_distance():
 
 
 def test_non_iid_synth_data():
-    dfs, labels = data_utils.create_blobs()
+    dfs, labels = data_utils.load_data(is_iid=False)
+    print(dfs[0][:5], labels[0][:5])
+    print(len(dfs))
+
+    colors = ['blue', 'red', 'pink']
+    for i in range(len(dfs)):
+        plt.scatter(dfs[i][:, 0], dfs[i][:, 1], color=colors[i])
+    plt.show()
+
+
+def test_load_data_real():
+    dfs, labels = data_utils.load_data(dataset='iris')
+    print(dfs[0][:5], labels[0][:5])
+
+    dfs, labels = data_utils.load_data(dataset='breast cancer')
     print(dfs[0][:5], labels[0][:5])
