@@ -10,6 +10,7 @@ from sklearn.metrics import silhouette_score
 from scipy.spatial.distance import euclidean
 
 from blockchain import Blockchain
+from block import Block
 import KMeans
 from utils import data_utils
 
@@ -61,7 +62,6 @@ class Device:
         # Role-specific
         self.role = None
         self.model = model
-        self.generate_rsa_key()
         # Data owners
         self.performance_this_round = float('-inf')
         self.local_update_time = None
@@ -75,6 +75,7 @@ class Device:
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
         self.committee_local_performance = None  # this can be set after validation of new global centroids.
+        self.candidate_blocks = []
         self.received_propagated_block = None
         # Leaders
         self.associated_comm_members = set()
@@ -114,6 +115,7 @@ class Device:
 
     def assign_leader_role(self):
         self.role = "leader"
+        self.generate_rsa_key()
 
     # if anything goes wrong during the learning process of a certain device, can reset
     def initialize_kmeans_model(self, n_clusters=3, verbose=False):
@@ -169,26 +171,24 @@ class Device:
 
     ''' not role-specific '''
 
-    def sign(self, msg):
+    def sign(self, msg):  # msg is assumed to be a block.
+        msg = str(msg).encode('utf-8')
         h = int.from_bytes(sha256(msg).digest(), byteorder='big')
-        signature = pow(h, self.private_key, self.public_key)
+        signature = pow(h, self.private_key, self.modulus)
         return signature
 
-    def verify_signature(self, msg):
+    def verify_signature(self, block):
         if self.check_signature:
-            # ToDo: ensure the following are included in msg.
-            modulus = msg['rsa_pub_key']["modulus"]
-            pub_key = msg['rsa_pub_key']["pub_key"]
-            signature = msg['signature']
+            modulus = block.get_miner_pk()["modulus"]
+            pub_key = block.get_miner_pk()["pub_key"]
+            signature = block.get_signature()
+            msg = str(copy.copy(block)).encode('utf-8')
             h = int.from_bytes(sha256(msg).digest(), byteorder='big')
             h_signed = pow(signature, pub_key, modulus)
             if h == h_signed:
-                print("The signature is valid and the message has been verified.")
                 return True
             else:
-                print("The signature is invalid and the message was not recorded.")
-                return False
-        print("The message has been verified.")  # placeholder
+                return False  # placeholder
         return True
 
     def add_peers(self, new_peers):
@@ -338,6 +338,7 @@ class Device:
     ''' committee member '''
 
     # ToDo: rewrite s.t. we also take the device idx for update_contribution.
+    # in other words, we want validate_update to call update_contribution, which requires device idx.
     def validate_update(self, local_centroids):
         self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=10)
         cluster_labels = self.model.fit_predict(self.dataset)
@@ -387,21 +388,17 @@ class Device:
         for i in range(len(g_centroids)):
             new_g_centroids.append(.5 * g_centroids[i] + .5 * aggr_centroids[i])  # Simple update rule for now.
         # print(self.validate_update(np.asarray(new_g_centroids)))
-        self.updated_centroids = np.asarray(new_g_centroids)
+        self.updated_centroids = np.asarray(new_g_centroids)  # ToDo: check update rule.
         return np.asarray(new_g_centroids)
+
+    def send_centroids(self, leader):
+        assert leader.return_role() == "leader", "Supplied device is not a leader."
+        leader.new_centroids.append(self.updated_centroids)
 
     def send_aggr_and_feedback(self):
         # requires update_contribution to alter a class variable (for Device type committee member).
         # this class variable can be retrieved here to send both the updated centroids and feedback per device.
         pass
-
-    def return_online_data_owners(self):
-        online_data_owners = set()
-        for peer in self.peer_list:
-            if peer.is_online():
-                if peer.return_role() == "data owner":
-                    online_data_owners.add(peer)
-        return online_data_owners
 
     def update_contribution(self, idx_update):
         # idx_update is a tuple being device_idx, local centroids
@@ -416,6 +413,29 @@ class Device:
                 else:
                     peer.contribution += 1
 
+    def return_online_data_owners(self):
+        online_data_owners = set()
+        for peer in self.peer_list:
+            if peer.is_online():
+                if peer.return_role() == "data owner":
+                    online_data_owners.add(peer)
+        return online_data_owners
+
+    def return_online_leaders(self):
+        online_leaders = set()
+        for peer in self.peer_list:
+            if peer.is_online():
+                if peer.return_role() == "leader":
+                    online_leaders.add(peer)
+        return online_leaders
+
+    def add_device_to_associated_set(self, device_idx):
+        assert self.role == 'committee'
+        self.associated_data_owners_set.add(device_idx)
+
+    def return_online_associated_data_owners(self):
+        return self.associated_data_owners_set
+
     # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
     def reset_vars_committee_member(self):
         self.associated_data_owners_set = set()
@@ -423,8 +443,11 @@ class Device:
         self.committee_local_performance = float('-inf')
         self.received_propagated_block = None
 
-    def verify_block(self):
-        pass
+    def verify_block(self, block):
+        if self.verify_signature(block):
+            return True
+        else:
+            return False
 
     def approve_block(self):  # i.e. if verify_block then approve_block
         pass
@@ -432,22 +455,35 @@ class Device:
     ''' leader '''
 
     def compute_update(self):
-        pass
+        obtained_centroids = np.asarray(self.new_centroids)
+        print(obtained_centroids.shape)  # in 'simple case': 5 comm_members each having 3 centroids having 2 dims.
+        # i.e. we want for each centroid (0, 1, ..., k) to average the results over all committee members.
+        # indexed like obtained_centroids[c][k][dim].
+        updated_g_centroids = []
+        for i in range(len(obtained_centroids[0])):
+            updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
+        return np.asarray(updated_g_centroids)
 
-    def update_feedback(self):
-        pass
+    def propose_block(self, new_g_centroids):
+        previous_hash = self.obtain_latest_block().get_hash()
+        data = dict()
+        data['centroids'] = new_g_centroids
+        block = Block(data=data, previous_hash=previous_hash, miner_pubkey=self.return_rsa_pub_key(),
+                      produced_by=self.return_idx())
+        signature = self.sign(block)
+        block.set_signature(signature)
+        return block
 
-    def propose_block(self):
-        pass
-
-    def broadcast_block(self):  # may be unnecessary, considering obtain_latest_block also exists.
-        pass
+    def broadcast_block(self, proposed_block):  # usage differs from device.obtain_latest_block().
+        online_committee_members = self.return_online_committee_members()
+        for committee_member in online_committee_members:
+            committee_member.candidate_blocks.append(proposed_block)
 
     def return_online_committee_members(self):
         online_committee_members = set()
         for peer in self.peer_list:
             if peer.is_online():
-                if peer.return_role() == "committee member":
+                if peer.return_role() == "committee":
                     online_committee_members.add(peer)
         return online_committee_members
 

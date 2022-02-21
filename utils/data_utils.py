@@ -22,8 +22,6 @@ def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True
     return df_train, df_test
 
 
-# ToDo: fix this function returning NoneType objects for some reason.
-# Note that NoneType is not returned when create_blobs() is called, rather than load_data() going to default case.
 def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, prop_test=None, dims=2, samples=100,
               clusters=3, verbose=False):
     eligible_datasets = ['iris', 'breast cancer', 'heart disease', 'forest types', 'blobs']

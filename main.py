@@ -82,6 +82,9 @@ parser.add_argument('-cs', '--check_signature', type=int, default=1, help='wheth
 parser.add_argument('-aio', '--all_in_one_network', type=int, default=1, help='whether to have all devices be aware '
                                                                               'of and connected to each other device '
                                                                               ' in the network')
+parser.add_argument('-cc', '--closely_connected', type=int, default=1, help='whether to have all data owners be '
+                                                                            'connected to all committee members or '
+                                                                            'have the connection be one to one.')
 
 if __name__ == '__main__':
 
@@ -222,6 +225,7 @@ if __name__ == '__main__':
             leader.reset_vars_leader()
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
+
         for device in data_owners_this_round:
             device.local_update()
             local_centroids = device.retrieve_local_centroids()
@@ -229,12 +233,21 @@ if __name__ == '__main__':
                 print(local_centroids)
 
             # send the result to a committee member in the device's peer list.
-            for peer in device.return_peers():
-                if peer in committee_members_this_round:
-                    peer.associated_data_owners_set.add(device)  # not quite sure whether this step is necessary for now
             # currently, we simply put each data owner into each committee member's associated set.
             # if we put a handful of data owners into each committee member's associated set, this code is required.
             # alternatively, we perform a check_online for each device that is in the peer list, then check for role...
+            if args['closely_connected']:
+                for peer in device.return_peers():
+                    if peer in committee_members_this_round:
+                        peer.add_device_to_associated_set(device)
+            else:
+                eligible_comm_members = []
+                for peer in device.return_peers():
+                    if peer in committee_members_this_round:
+                        eligible_comm_members.append(peer)
+                random.shuffle(eligible_comm_members)
+                # associate the device with only one committee member.
+                eligible_comm_members[0].add_device_to_associated_set(device)
 
         # iii. committee members validate retrieved updates and aggregate viable results
         updated_centroids = []
@@ -243,7 +256,7 @@ if __name__ == '__main__':
             # print(comm_member.return_idx() + " having associated data owners ...")
             updates_per_idx = []
             # alternatively, we can use return_online_data_owners per committee member.
-            for data_owner in comm_member.associated_data_owners_set:
+            for data_owner in comm_member.return_online_associated_data_owners():
                 # print(data_owner.return_idx())
                 comm_member.local_centroids.append(data_owner.retrieve_local_centroids())
                 updates_per_idx.append((data_owner.return_idx(), data_owner.retrieve_local_centroids()))  # tuple
@@ -271,34 +284,47 @@ if __name__ == '__main__':
                     peer.associated_comm_members.add(comm_member)
 
         # # Code for plotting intermediate results compared to the initial centroids.
+        # print(init_centroids, updated_centroids[-1])
         # for i in range(len(blobs)):
-        #     plt.scatter(blobs[i][:, 0], blobs[i][:, 1])
-        # plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='purple')
-        # # could do this for every aggregate
-        # plt.scatter(updated_centroids[0][:, 0], updated_centroids[0][:, 1], color='k')
+        #     plt.scatter(blobs[i][:, 0], blobs[i][:, 1], color='green', alpha=.3)
+        # plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='orange')
+        # plt.scatter(updated_centroids[-1][:, 0], updated_centroids[-1][:, 1], color='k')
         # plt.show()
 
         # iv. committee members send updated centroids to every leader
         for leader in leaders_this_round:
             # check whether the committee members are (successfully) associating with the leader.
-            print([associated_member.return_idx() for associated_member in leader.associated_comm_members])
+            # print([associated_member.return_idx() for associated_member in leader.associated_comm_members])
             for comm_member in leader.associated_comm_members:
+                comm_member.send_centroids(leader)
                 # comm_members share their aggregates with the leader.
                 # if no aggregate is obtained for some committee members, leaders give negative feedback.
                 # otherwise, feedback is positive (only depends on retrieval, not quality of centroids).
-                leader.new_centroids.append(comm_member.updated_centroids)
-            print(leader.new_centroids)  # if each comm member sees every update, these should all be equal.
 
             # v. leaders build candidate blocks using the obtained centroids and send it to committee members for
             # approval.
-            bc = leader.return_blockchain_obj()
-            data = dict()
-            previous_hash = leader.obtain_latest_block().get_hash()
-            block = Block(data=data, previous_hash=previous_hash)
+            proposed_g_centroids = leader.compute_update()
+            block = leader.propose_block(proposed_g_centroids)
+            block.set_signature(leader.sign(block))  # could do this within sign as msg is assumed to be a block.
+            print(str(block))
+
+            list(leader.associated_comm_members)[0].verify_block(block)  # preliminary check, to be removed.
+            leader.broadcast_block(block)  # block is added to each online committee member's candidate blocks.
+            # idea: committee members loop through the blocks in the candidate blocks and check their validity.
+            # afterwards, they check local performance with the newly proposed global centroids and vote accordingly.
 
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
         for comm_member in committee_members_this_round:
-            pass  # do voting
+            assert len(comm_member.candidate_blocks) > 0, "Committee member did not retrieve any proposed blocks."
+            print(str(comm_member.return_idx()) + " is now checking their candidate blocks.")
+            for candidate_block in comm_member.candidate_blocks:
+                # if the block signature is invalid, we ignore the block from the candidate blocks.
+                if comm_member.verify_block(candidate_block):
+                    print("Candidate block has been verified.")
+                    centroids_to_check = candidate_block.get_data()['centroids']
+                    print("Using the newly proposed global centroids from the candidate block, an average silhouette "
+                          "score of " + str(comm_member.validate_update(centroids_to_check)) + " was found.")
+                    pass  # check performance and vote
 
         # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
         winning_block = False

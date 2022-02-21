@@ -4,7 +4,7 @@ from Crypto.PublicKey import RSA
 
 
 class Block:  # Can put block as a dictionary. Though data should always be reserved for (model) parameters.
-    def __init__(self, data, previous_hash, index=None, nonce=0, signature=None, mined_by=None, miner_pubkey=None):
+    def __init__(self, data, previous_hash, index=None, nonce=0, signature=None, produced_by=None, miner_pubkey=None):
         self.hash = hashlib.sha256()
         self.index = index
         self.previous_hash = previous_hash  # refer to the last block (link them together)
@@ -13,7 +13,7 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         self.timestamp = str(dt.datetime.now())
         self.signature = signature
         # leader specific
-        self.mined_by = mined_by
+        self.produced_by = produced_by
         self.miner_pubkey = miner_pubkey
 
     def mine(self, difficulty):
@@ -24,8 +24,10 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
             self.hash.update(str(self).encode('utf-8'))
 
     # ToDo: improve way of showing the block contents.
+    # this string representation is now (exclusively) used for hashing/signing.
+    # a different representation, such __dict__(self) may be used to print block contents.
     def __str__(self):
-        return "{} {} {}".format(self.previous_hash.hexdigest(), self.data, self.timestamp)
+        return "{} {} {} {}".format(self.previous_hash.hexdigest(), self.data, self.timestamp, self.produced_by)
 
     # def nonce_increment(self):
     #     self.nonce += 1
@@ -58,8 +60,8 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
     def get_signature(self):
         return self.signature
 
-    def get_mined_by(self):
-        return self.mined_by
+    def get_produced_by(self):
+        return self.produced_by
 
     def get_miner_pk(self):
         return self.miner_pubkey

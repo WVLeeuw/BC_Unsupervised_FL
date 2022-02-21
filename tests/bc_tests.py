@@ -2,6 +2,8 @@ from blockchain import Blockchain
 from block import Block
 
 from hashlib import sha256
+from Crypto.PublicKey import RSA
+import copy
 
 
 def test_bc_genesis():
@@ -60,3 +62,39 @@ def test_nonce_increment():
     bc.mine(block2)
 
     print(str(bc.get_chain_structure()[-2]), str(bc.get_chain_structure()[-1]))
+
+
+def test_signature_verification():
+    bc = Blockchain(difficulty=0)
+    bc.create_genesis_block()
+    prev_block = bc.get_most_recent_block()
+
+    kp = RSA.generate(bits=1024)
+    modulus = kp.n
+    private_key = kp.d
+    public_key = kp.e
+
+    # generate signature and set it
+    block1 = Block(data={}, previous_hash=prev_block.get_hash())
+    msg = str(block1).encode('utf-8')
+    h = int.from_bytes(sha256(msg).digest(), byteorder='big')
+    signature = pow(h, private_key, modulus)
+    block1.set_signature(signature)
+
+    # verify signature (should be done before mining)
+    msg = str(copy.copy(block1)).encode('utf-8')
+    h = int.from_bytes(sha256(msg).digest(), byteorder='big')
+    h_signed = pow(signature, public_key, modulus)
+
+    print(hex(h))
+    print(hex(h_signed))
+
+    signature_valid = False
+    if h == h_signed:
+        print("The signature is valid and the message has been verified.")
+        signature_valid = True
+    else:
+        print("The signature is invalid and the message was not recorded.")
+
+    if signature_valid:
+        bc.mine(block1)
