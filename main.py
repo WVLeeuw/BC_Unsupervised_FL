@@ -138,19 +138,7 @@ if __name__ == '__main__':
         else:
             print(f'Malicious nodes and total devices set to {num_malicious}:{num_devices}')
 
-    # 5. create genesis block and devices in the network, dummy data for now
-    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
-    blobs, labels = data_utils.create_blobs()
-    min_x, max_x = np.min(blobs[:][0]), np.max(blobs[:][0])
-    min_y, max_y = np.min(blobs[:][1]), np.max(blobs[:][1])
-    values = [[min_x, max_x], [min_y, max_y]]
-    n_dims, n_clusters = 2, args['num_global_centroids']
-    data = dict()
-    init_centroids = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
-    data['centroids'] = init_centroids
-    bc = Blockchain()
-    bc.create_genesis_block(data=data)
-
+    # 5. Create devices in the network and their genesis block. Using dummy data for now.
     devices_in_network = DevicesInNetwork(is_iid=args['IID'], num_devices=num_devices, num_malicious=num_malicious,
                                           network_stability=args['network_stability'],
                                           committee_wait_time=args['committee_member_wait_time'],
@@ -158,12 +146,38 @@ if __name__ == '__main__':
                                           equal_link_speed=args['equal_link_speed'],
                                           data_transmission_speed=args['data_transmission_speed'],
                                           equal_computation_power=args['equal_computation_power'],
-                                          check_signature=args['check_signature'], bc=bc)
+                                          check_signature=args['check_signature'])
     device_list = list(devices_in_network.devices_set.values())
+
+    # Extract the bounds on the data which was used for the creation of the devices.
+    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
+    # ToDo: create a function that
+    #  does this in data_utils that allows for any number of dimensions (rather than only 2).
+    min_x, max_x, min_y, max_y = float('inf'), -float('inf'), float('inf'), -float('inf')
+    for device in device_list:
+        if np.min(device.dataset[:][0]) < min_x:
+            min_x = np.min(device.dataset[:][0])
+        if np.max(device.dataset[:][0]) > max_x:
+            max_x = np.max(device.dataset[:][0])
+        if np.min(device.dataset[:][1]) < min_y:
+            min_y = np.min(device.dataset[:][1])
+        if np.max(device.dataset[:][1]) > max_y:
+            max_y = np.max(device.dataset[:][1])
+
+    values = [[min_x, max_x], [min_y, max_y]]
+    # print(values)
+    n_dims, n_clusters = 2, args['num_global_centroids']
+    data = dict()
+    init_centroids = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
+    data['centroids'] = init_centroids
+    bc = Blockchain()
+    bc.create_genesis_block(data=data)
 
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
-        # initialize for each device their kmeans model
+        # feed the created blockchain with genesis block to each device.
+        device.blockchain = bc
+        # initialize for each device their kmeans model. ToDo: utilize this to run the elbow method.
         device.initialize_kmeans_model(n_clusters=args['num_local_centroids'])
         # num_local_centroids should also be a parameter of the device constructor.
         # helper function simulating registration, effectively a setter in Device class
@@ -250,7 +264,7 @@ if __name__ == '__main__':
                 eligible_comm_members[0].add_device_to_associated_set(device)
 
         # iii. committee members validate retrieved updates and aggregate viable results
-        updated_centroids = []
+        aggregated_local_centroids = []
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             # print(comm_member.return_idx() + " having associated data owners ...")
@@ -274,8 +288,9 @@ if __name__ == '__main__':
             print(str(comm_member.validate_update(aggr_centroids)) +
                   " compared to previous global model performance of " +
                   str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
-            print(comm_member.compute_new_global_centroids(aggr_centroids))
-            updated_centroids.append(comm_member.compute_new_global_centroids(aggr_centroids))
+            print(comm_member.compute_new_global_centroids(aggr_centroids))  # this statement can remain
+            # aggregated_local_centroids.append(comm_member.compute_new_global_centroids(aggr_centroids))
+            aggregated_local_centroids.append(aggr_centroids)
 
             # Match the committee members with all leaders by putting them in their associated set.
             # alternatively, we can use return_online_committee_members per leader.
@@ -283,15 +298,8 @@ if __name__ == '__main__':
                 if peer in leaders_this_round:
                     peer.associated_comm_members.add(comm_member)
 
-        # # Code for plotting intermediate results compared to the initial centroids.
-        # print(init_centroids, updated_centroids[-1])
-        # for i in range(len(blobs)):
-        #     plt.scatter(blobs[i][:, 0], blobs[i][:, 1], color='green', alpha=.3)
-        # plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='orange')
-        # plt.scatter(updated_centroids[-1][:, 0], updated_centroids[-1][:, 1], color='k')
-        # plt.show()
-
         # iv. committee members send updated centroids to every leader
+        newly_proposed_centroids = []
         for leader in leaders_this_round:
             # check whether the committee members are (successfully) associating with the leader.
             # print([associated_member.return_idx() for associated_member in leader.associated_comm_members])
@@ -304,14 +312,25 @@ if __name__ == '__main__':
             # v. leaders build candidate blocks using the obtained centroids and send it to committee members for
             # approval.
             proposed_g_centroids = leader.compute_update()
+            newly_proposed_centroids.append(proposed_g_centroids)
             block = leader.propose_block(proposed_g_centroids)
             block.set_signature(leader.sign(block))  # could do this within sign as msg is assumed to be a block.
             print(str(block))
 
-            list(leader.associated_comm_members)[0].verify_block(block)  # preliminary check, to be removed.
             leader.broadcast_block(block)  # block is added to each online committee member's candidate blocks.
             # idea: committee members loop through the blocks in the candidate blocks and check their validity.
             # afterwards, they check local performance with the newly proposed global centroids and vote accordingly.
+
+        print(init_centroids, newly_proposed_centroids[0])
+        # N.B. all leaders end up with the same proposed centroids as each committee member communicates with each
+        # leader.
+        # Code for plotting intermediate results compared to the initial centroids.
+        for device in device_list:
+            for i in range(len(device.dataset)):
+                plt.scatter(device.dataset[i][0], device.dataset[i][1], color='green', alpha=.3)
+        plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='orange')
+        plt.scatter(newly_proposed_centroids[-1][:, 0], newly_proposed_centroids[-1][:, 1], color='k')
+        plt.show()
 
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
         for comm_member in committee_members_this_round:
@@ -324,7 +343,10 @@ if __name__ == '__main__':
                     centroids_to_check = candidate_block.get_data()['centroids']
                     print("Using the newly proposed global centroids from the candidate block, an average silhouette "
                           "score of " + str(comm_member.validate_update(centroids_to_check)) + " was found.")
-                    pass  # check performance and vote
+                    # ToDo: check performance (validate proposed g_centroids) and vote accordingly.
+                else:
+                    print("Candidate block could not be verified. \n"
+                          "Block originates from device having idx: " + str(candidate_block.get_produced_by()))
 
         # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
         winning_block = False

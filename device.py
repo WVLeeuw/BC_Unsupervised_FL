@@ -318,11 +318,14 @@ class Device:
 
     def local_update(self):
         # Retrieve the newest block and specifically the centroids recorded in it.
+        start_time = time.time()
         g_centroids = self.retrieve_global_centroids()
         # Build a new (local) model using the centroids.
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
         self.model.fit(self.dataset)  # and perform the update.
         # performance = self.model.inertia_
+        end_time = time.time()
+        self.local_update_time = end_time - start_time
 
     def retrieve_local_centroids(self):
         local_centroids = self.model.cluster_centers_
@@ -369,6 +372,7 @@ class Device:
             updates_per_centroid.append(to_aggregate)
         return updates_per_centroid
 
+    # ToDo: figure whether a FedAvg type of approach can be done for aggregating updates.
     def aggr_updates(self, updates_per_centroid):
         aggr_centroids = []
         for i in range(len(updates_per_centroid)):
@@ -378,9 +382,12 @@ class Device:
                 avgs = updates_per_centroid[i].mean(axis=0)  # taking simple average of 'columns' for now.
                 aggr_centroids.append(avgs.tolist())
             else:  # committee member received no updates for this centroid
-                aggr_centroids.append(self.retrieve_global_centroids()[i])  # should put the global centroid here.
+                aggr_centroids.append(self.retrieve_global_centroids()[i])  # should then put the global centroid.
+        self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
 
+    # ToDo: ensure that this function is called by leaders, not by committee members.
+    # This should be a function that is run by the leaders after obtaining aggr_centroids from all committee members.
     def compute_new_global_centroids(self, aggr_centroids):
         g_centroids = self.retrieve_global_centroids()
         assert len(g_centroids) == len(aggr_centroids), "Number of global centroids not equal to aggregated centroids."
@@ -388,7 +395,7 @@ class Device:
         for i in range(len(g_centroids)):
             new_g_centroids.append(.5 * g_centroids[i] + .5 * aggr_centroids[i])  # Simple update rule for now.
         # print(self.validate_update(np.asarray(new_g_centroids)))
-        self.updated_centroids = np.asarray(new_g_centroids)  # ToDo: check update rule.
+        self.updated_centroids = np.asarray(new_g_centroids)
         return np.asarray(new_g_centroids)
 
     def send_centroids(self, leader):
@@ -456,13 +463,21 @@ class Device:
 
     def compute_update(self):
         obtained_centroids = np.asarray(self.new_centroids)
+        g_centroids = self.retrieve_global_centroids()
         print(obtained_centroids.shape)  # in 'simple case': 5 comm_members each having 3 centroids having 2 dims.
         # i.e. we want for each centroid (0, 1, ..., k) to average the results over all committee members.
         # indexed like obtained_centroids[c][k][dim].
         updated_g_centroids = []
+        # compute aggregates.
         for i in range(len(obtained_centroids[0])):
             updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
-        return np.asarray(updated_g_centroids)
+
+        # compute new global centroids (simple update step).
+        new_g_centroids = []
+        assert len(updated_g_centroids) == len(g_centroids)
+        for i in range(len(updated_g_centroids)):
+            new_g_centroids.append(.5 * g_centroids[i] + .5 * updated_g_centroids[i])
+        return np.asarray(new_g_centroids)
 
     def propose_block(self, new_g_centroids):
         previous_hash = self.obtain_latest_block().get_hash()
