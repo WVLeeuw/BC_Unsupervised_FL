@@ -62,40 +62,12 @@ def test_data_load_numpy():
     print(means)
 
 
-# def test_data_load_make_blobs():
-#     X, y = data_utils.create_blobs(dims=2, verbose=True)
-#     plt.scatter(X[:, 0], X[:, 1])
-#     plt.show()
-
-
 def test_make_blobs_divide():
     X, y = data_utils.create_blobs(dims=2, samples=300, verbose=True)
     colors = ['blue', 'red', 'pink']
     for i in range(len(X)):
         plt.scatter(X[i][:, 0], X[i][:, 1], color=colors[i])
     plt.show()
-
-
-# def test_make_blobs_split():
-#     X_test, X_train, y_test, y_train = data_utils.create_blobs(dims=2, samples=300, split_train_test=True)
-#     print(X_train.shape)
-#     print(X_test.shape)
-
-
-# def test_make_blobs_divide_alternative():
-#     X, y = data_utils.create_blobs(dims=2, samples=300)
-#     num_devices = 3
-#     data_size_local = len(X) // num_devices
-#
-#     datasets = []
-#     for i in range(num_devices):
-#         # print(i, i+1)
-#         # print(i*data_size_local, (i+1)*data_size_local)
-#         local_data = X[i*data_size_local:(i+1)*data_size_local]
-#         print(local_data.shape)
-#         datasets.append(local_data)
-
-    # print(datasets)
 
 
 def test_real_data_divide():
@@ -151,3 +123,28 @@ def test_load_data_real():
 
     dfs, labels = data_utils.load_data(dataset='breast cancer')
     print(dfs[0][:5], labels[0][:5])
+
+
+def test_obtain_bounds():
+    dfs, labels = data_utils.load_data()
+    print(dfs[0])
+    min_vals, max_vals = data_utils.obtain_bounds(np.asarray(dfs[0]))
+    print(min_vals, max_vals)
+    for dim in range(len(min_vals)):
+        print(min_vals[dim])
+        print(max_vals[dim])
+
+    # plt.scatter(dfs[0][:, 0], dfs[0][:, 1], color='green')
+    # plt.show()
+
+
+def test_obtain_bounds_multiple():
+    # dfs, labels = data_utils.load_data()
+    dfs = [[[1, 2], [3, 3]], [[0, 0], [2, -2]], [[-4, 0], [2, -1]]]
+    print(data_utils.obtain_bounds_multiple(np.asarray(dfs)))
+    min_vals, max_vals = data_utils.obtain_bounds_multiple(np.asarray(dfs))
+    bounds = []
+    for i in range(len(min_vals)):
+        bounds.append([min_vals[i], max_vals[i]])
+    print(bounds)
+

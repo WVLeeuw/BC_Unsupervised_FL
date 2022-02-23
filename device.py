@@ -539,20 +539,12 @@ class DevicesInNetwork(object):
         self._dataset_allocation()
 
     # For now, let us allocate a (simple) testing dataset.
+    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
     def _dataset_allocation(self):
         # read dataset
-        train_data, labels = data_utils.create_blobs(num_devices=self.num_devices, is_iid=self.is_iid)
+        train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid)
 
-        # then divide across devices
-        # train_data = dataset[0]
-        # test_data = dataset[1]
-
-        # data_size_train = len(train_data) // self.num_devices
-        # data_size_test = test_data // self.num_devices
-
-        # Depending on is_iid, we allocate an equal amount of records to each device.
-        # dfs = np.array_split(train_data, self.num_devices)
-        # dfs_labels = np.array_split(labels, self.num_devices)
+        # then create individual devices, each having their local dataset.
         for i in range(self.num_devices):
             # divide the data equally
             local_dataset = [train_data[i], labels[i]]

@@ -122,6 +122,27 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
         return np.array_split(df, num_devices), np.array_split(labels, num_devices)
 
 
+# Function that returns the bounds (min, max) for each dimension in dataset df. Expects df to be a np.array.
+# Should be a matrix describing n records having i features (dimensions).
+def obtain_bounds(df):
+    min_vals = df.min(axis=0)
+    max_vals = df.max(axis=0)
+    return min_vals.flatten(), max_vals.flatten()
+
+
+def obtain_bounds_multiple(dfs):
+    min_vals, max_vals = obtain_bounds(np.asarray(dfs[0]))
+    print(min_vals, max_vals)
+    for df in dfs[1:]:
+        min_vals_df, max_vals_df = obtain_bounds(df)
+        for dim in range(len(min_vals)):
+            if min_vals_df[dim] < min_vals[dim]:
+                min_vals[dim] = min_vals_df[dim]
+            if max_vals_df[dim] > max_vals[dim]:
+                max_vals[dim] = max_vals_df[dim]
+    return min_vals, max_vals
+
+
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):
     num_clients = clients_per_cluster * clusters
     # create gaussian data set, per client one mean

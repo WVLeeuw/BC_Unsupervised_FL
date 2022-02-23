@@ -150,25 +150,19 @@ if __name__ == '__main__':
     device_list = list(devices_in_network.devices_set.values())
 
     # Extract the bounds on the data which was used for the creation of the devices.
-    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
-    # ToDo: create a function that
-    #  does this in data_utils that allows for any number of dimensions (rather than only 2).
-    min_x, max_x, min_y, max_y = float('inf'), -float('inf'), float('inf'), -float('inf')
+    datasets = []
     for device in device_list:
-        if np.min(device.dataset[:][0]) < min_x:
-            min_x = np.min(device.dataset[:][0])
-        if np.max(device.dataset[:][0]) > max_x:
-            max_x = np.max(device.dataset[:][0])
-        if np.min(device.dataset[:][1]) < min_y:
-            min_y = np.min(device.dataset[:][1])
-        if np.max(device.dataset[:][1]) > max_y:
-            max_y = np.max(device.dataset[:][1])
-
-    values = [[min_x, max_x], [min_y, max_y]]
-    # print(values)
+        datasets.append(device.dataset)
     n_dims, n_clusters = 2, args['num_global_centroids']
+
+    min_vals, max_vals = data_utils.obtain_bounds_multiple(np.asarray(datasets))
+    bounds = []
+    for i in range(len(min_vals)):  # N.B. len(min_vals) should be equal to n_dims every single time.
+        bounds.append([min_vals[i], max_vals[i]])
+    print(bounds)
+
     data = dict()
-    init_centroids = KMeans.randomly_init_centroid_range(values, n_dims, n_clusters)
+    init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
     data['centroids'] = init_centroids
     bc = Blockchain()
     bc.create_genesis_block(data=data)
@@ -351,4 +345,5 @@ if __name__ == '__main__':
         # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
         winning_block = False
         if winning_block:
+            # sign the hash of the best performing candidate block to produce a vote.
             pass  # append the block and propagate it.
