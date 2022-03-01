@@ -132,7 +132,6 @@ def obtain_bounds(df):
 
 def obtain_bounds_multiple(dfs):
     min_vals, max_vals = obtain_bounds(np.asarray(dfs[0]))
-    print(min_vals, max_vals)
     for df in dfs[1:]:
         min_vals_df, max_vals_df = obtain_bounds(df)
         for dim in range(len(min_vals)):

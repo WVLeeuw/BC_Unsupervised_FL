@@ -65,7 +65,7 @@ class Device:
         # Data owners
         self.performance_this_round = float('-inf')
         self.local_update_time = None
-        self.local_total_epoch = None
+        self.local_total_epoch = 0
         # Committee members
         self.associated_data_owners_set = set()
         self.performances_this_round = {}
@@ -74,14 +74,13 @@ class Device:
         self.updated_centroids = []
         self.committee_wait_time = committee_wait_time
         self.committee_threshold = committee_threshold
-        self.committee_local_performance = None  # this can be set after validation of new global centroids.
+        self.committee_local_performance = float('-inf')  # this can be set after validation of new global centroids.
         self.candidate_blocks = []
         self.received_propagated_block = None
         # Leaders
-        self.associated_comm_members = set()
         self.new_centroids = []
-        self.mined_block = None
-        self.received_votes = None
+        self.proposed_block = None
+        self.received_votes = []
 
         # Keys
         self.modulus = None
@@ -112,10 +111,11 @@ class Device:
 
     def assign_committee_role(self):
         self.role = "committee"
+        self.generate_rsa_key()  # for voting (through signing block hashes)
 
     def assign_leader_role(self):
         self.role = "leader"
-        self.generate_rsa_key()
+        self.generate_rsa_key()  # for signing blocks
 
     # if anything goes wrong during the learning process of a certain device, can reset
     def initialize_kmeans_model(self, n_clusters=3, verbose=False):
@@ -308,8 +308,13 @@ class Device:
         latest_block = self.obtain_latest_block()
         return latest_block.data['centroids']
 
+    # called by miners after they receive a majority vote.
     def add_block(self, block_to_add):
         self.blockchain.mine(block_to_add)
+
+    # in case a block is propagated (i.e. already mined and verified) and must be appended to a device's chain.
+    def append_block(self, block_to_append):
+        self.return_blockchain_obj().append_block(block_to_append)
 
     def obtain_latest_block(self):
         return self.blockchain.get_most_recent_block()
@@ -321,7 +326,7 @@ class Device:
         start_time = time.time()
         g_centroids = self.retrieve_global_centroids()
         # Build a new (local) model using the centroids.
-        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=10)
+        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=5)
         self.model.fit(self.dataset)  # and perform the update.
         # performance = self.model.inertia_
         end_time = time.time()
@@ -331,6 +336,20 @@ class Device:
         local_centroids = self.model.cluster_centers_
         # send update to associated committee member
         return local_centroids
+
+    # Used to retrieve good choice of k for local model.
+    def elbow_method(self):
+        ks = range(1, 10)
+        inertias = []
+
+        for k in ks:
+            model = cluster.KMeans(n_clusters=k, max_iter=20)
+            model.fit(self.dataset)
+            inertias.append(model.inertia_)
+
+        for i in range(1, len(inertias)-1):
+            if inertias[i] > .5 * inertias[i-1]:
+                return i
 
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
@@ -343,7 +362,7 @@ class Device:
     # ToDo: rewrite s.t. we also take the device idx for update_contribution.
     # in other words, we want validate_update to call update_contribution, which requires device idx.
     def validate_update(self, local_centroids):
-        self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=10)
+        self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=1)
         cluster_labels = self.model.fit_predict(self.dataset)
         silhouette_avg = silhouette_score(self.dataset, cluster_labels)
         # self.update_contribution(silhouette_avg)
@@ -443,21 +462,54 @@ class Device:
     def return_online_associated_data_owners(self):
         return self.associated_data_owners_set
 
-    # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
-    def reset_vars_committee_member(self):
-        self.associated_data_owners_set = set()
-        self.performances_this_round = {}
-        self.committee_local_performance = float('-inf')
-        self.received_propagated_block = None
-
     def verify_block(self, block):
         if self.verify_signature(block):
             return True
         else:
             return False
 
-    def approve_block(self):  # i.e. if verify_block then approve_block
-        pass
+    # approve block effectively produces a vote for said block.
+    def approve_block(self, block):  # i.e. if verify_block then approve_block
+        msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key()]
+        return msg
+
+    def accept_propagated_block(self, propagated_block, source_idx):
+        if source_idx not in self.black_list and propagated_block.get_hash() != self.obtain_latest_block().get_hash():
+            self.append_block(propagated_block)
+        else:
+            print(f"{source_idx} is in {self.return_idx()}'s blacklist.")
+
+    def request_to_download(self, block_to_download):
+        for peer in self.peer_list:
+            if peer.is_online() and self.is_online():
+                # check whether the block is valid and has not already been added to the chain for current peer.
+                if peer.verify_block(block_to_download) and \
+                        peer.obtain_latest_block().get_hash() != block_to_download.get_hash():
+                    peer.append_block(block_to_download)
+            else:
+                print(f"Either {peer.return_idx()} or {self.return_idx()} is currently offline and thus the block"
+                      f"could not be downloaded.")
+
+    def send_vote(self, vote, device_idx):
+        leader_found = False
+        for peer in self.peer_list:
+            if peer.return_idx() == device_idx and peer.return_role() == 'leader':
+                peer.received_votes.append(vote)
+                leader_found = True
+        if not leader_found:
+            print(f"{device_idx} is not a leader node.")
+
+    def return_candidate_blocks(self):
+        return self.candidate_blocks
+
+    # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
+    def reset_vars_committee_member(self):
+        self.associated_data_owners_set = set()
+        self.performances_this_round = {}
+        self.committee_local_performance = float('-inf')
+        self.received_propagated_block = None
+        self.candidate_blocks = []
+        self.local_centroids = []
 
     ''' leader '''
 
@@ -483,16 +535,22 @@ class Device:
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
-        block = Block(data=data, previous_hash=previous_hash, miner_pubkey=self.return_rsa_pub_key(),
-                      produced_by=self.return_idx())
+        block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
+                      miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
         signature = self.sign(block)
         block.set_signature(signature)
+        self.proposed_block = block
         return block
 
     def broadcast_block(self, proposed_block):  # usage differs from device.obtain_latest_block().
         online_committee_members = self.return_online_committee_members()
         for committee_member in online_committee_members:
             committee_member.candidate_blocks.append(proposed_block)
+
+    def propagate_block(self, block_to_propagate):
+        committee = self.return_online_committee_members()
+        for member in committee:
+            member.accept_propagated_block(block_to_propagate, self.return_idx())
 
     def return_online_committee_members(self):
         online_committee_members = set()
@@ -502,14 +560,17 @@ class Device:
                     online_committee_members.add(peer)
         return online_committee_members
 
+    def return_received_votes(self):
+        return self.received_votes
+
     def update_reputation(self):
         pass
 
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
     def reset_vars_leader(self):
-        self.mined_block = None
-        self.received_votes = None
-        self.received_propagated_block = None
+        self.new_centroids = []
+        self.proposed_block = None
+        self.received_votes = []
 
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
@@ -542,7 +603,7 @@ class DevicesInNetwork(object):
     # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
     def _dataset_allocation(self):
         # read dataset
-        train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid)
+        train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid, samples=500)
 
         # then create individual devices, each having their local dataset.
         for i in range(self.num_devices):

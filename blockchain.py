@@ -18,21 +18,24 @@ class Blockchain:
                (int(h.hexdigest(), 16) < 2 ** (256 - self.difficulty)) and \
                (block.previous_hash == self.blocks[-1].hash)
 
-    def _add_to_chain(self, block):
+    def add_to_chain(self, block):
         if self.proof_of_work(block):
             self.blocks.append(block)
         else:
             print("The block could not be appended.")
 
+    def append_block(self, block):
+        self.blocks.append(copy.copy(block))
+
     def mine(self, block):
         block.mine(self.difficulty)
-        self._add_to_chain(block)
+        self.add_to_chain(block)
 
     def create_genesis_block(self, data=None):
         h = hashlib.sha256()
         h.update(''.encode('utf-8'))
         # data = np.zeros((2, 2))
-        genesis = Block(data=data, previous_hash=h)
+        genesis = Block(index=1, data=data, previous_hash=h, produced_by="Genesis")
         genesis.mine(self.difficulty)
         self.blocks.append(genesis)
 

@@ -27,7 +27,8 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
     # this string representation is now (exclusively) used for hashing/signing.
     # a different representation, such __dict__(self) may be used to print block contents.
     def __str__(self):
-        return "{} {} {} {}".format(self.previous_hash.hexdigest(), self.data, self.timestamp, self.produced_by)
+        return "{} {} {} {} {}".format(self.index, self.previous_hash.hexdigest(), self.data, self.timestamp,
+                                       self.produced_by)
 
     # def nonce_increment(self):
     #     self.nonce += 1
