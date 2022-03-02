@@ -18,7 +18,7 @@ class Blockchain:
                (int(h.hexdigest(), 16) < 2 ** (256 - self.difficulty)) and \
                (block.previous_hash == self.blocks[-1].hash)
 
-    def add_to_chain(self, block):
+    def _add_to_chain(self, block):
         if self.proof_of_work(block):
             self.blocks.append(block)
         else:
@@ -29,7 +29,7 @@ class Blockchain:
 
     def mine(self, block):
         block.mine(self.difficulty)
-        self.add_to_chain(block)
+        self._add_to_chain(block)
 
     def create_genesis_block(self, data=None):
         h = hashlib.sha256()

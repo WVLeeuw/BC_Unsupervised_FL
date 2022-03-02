@@ -40,6 +40,11 @@ parser.add_argument('-lc', '--num_local_centroids', type=int, default=3, help='n
                                                                               'models')
 parser.add_argument('-le', '--num_local_epochs', type=int, default=1, help='number of epochs to perform for the '
                                                                            'acquisition of local update')
+parser.add_argument('-eps', '--epsilon', type=float, default=0.01, help='threshold for the difference between the '
+                                                                        'location of newly computed centroids and '
+                                                                        'previous global centroids s.t. when that '
+                                                                        'difference is less than epsilon, '
+                                                                        'the learning process ends.')
 
 # BC attributes (consensus & committee parameters)
 parser.add_argument('-vh', '--validator_threshold', type=float, default=1.0, help='threshold value of a difference in '
@@ -147,7 +152,8 @@ if __name__ == '__main__':
                                           equal_link_speed=args['equal_link_speed'],
                                           data_transmission_speed=args['data_transmission_speed'],
                                           equal_computation_power=args['equal_computation_power'],
-                                          check_signature=args['check_signature'])
+                                          check_signature=args['check_signature'],
+                                          stop_condition=args['epsilon'])
     device_list = list(devices_in_network.devices_set.values())
 
     # Extract the bounds on the data which was used for the creation of the devices.
@@ -172,9 +178,8 @@ if __name__ == '__main__':
     for device in device_list:
         # feed the created blockchain with genesis block to each device.
         device.blockchain = bc
-        # initialize for each device their kmeans model. ToDo: utilize this to run the elbow method.
-        device.initialize_kmeans_model(n_clusters=args['num_local_centroids'])
         # num_local_centroids should also be a parameter of the device constructor.
+        device.initialize_kmeans_model(n_clusters=device.elbow_method())
         # helper function simulating registration, effectively a setter in Device class
         device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
         # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
@@ -194,7 +199,8 @@ if __name__ == '__main__':
     for device in device_list:
         # print("Sensible choice for # local clusters: " + str(device.elbow_method()))
         k_choices.append(device.elbow_method())
-    print("Average choice of k found: " + str(math.ceil(sum(k_choices)/len(k_choices))))
+    print("Average choice of k found: " + str(math.ceil(sum(k_choices) / len(k_choices))))
+    print(math.ceil(sum(k_choices) / len(k_choices)) == args['num_global_centroids'])
 
     # BCFL-KMeans starts here
     for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
@@ -241,7 +247,6 @@ if __name__ == '__main__':
             leader.reset_vars_leader()
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
-
         for device in data_owners_this_round:
             device.local_update()  # ToDo: consider local computation power here.
             local_centroids = device.retrieve_local_centroids()
@@ -275,7 +280,7 @@ if __name__ == '__main__':
             # ToDo: consider link speeds here.
             for data_owner in comm_member.return_online_associated_data_owners():
                 # print(data_owner.return_idx())
-                comm_member.local_centroids.append(data_owner.retrieve_local_centroids())
+                comm_member.obtain_local_update(data_owner.retrieve_local_centroids(), data_owner.return_idx())
                 updates_per_idx.append((data_owner.return_idx(), data_owner.retrieve_local_centroids()))  # tuple
 
             print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
@@ -292,7 +297,7 @@ if __name__ == '__main__':
             print(str(comm_member.validate_update(aggr_centroids)) +
                   " compared to previous global model performance of " +
                   str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
-            print(comm_member.compute_new_global_centroids(aggr_centroids))  # this statement can remain
+            print(comm_member.compute_new_global_centroids(aggr_centroids))  # ToDo: delete for final version.
             # aggregated_local_centroids.append(comm_member.compute_new_global_centroids(aggr_centroids))
             aggregated_local_centroids.append(aggr_centroids)
 
@@ -331,60 +336,71 @@ if __name__ == '__main__':
             assert len(comm_member.candidate_blocks) > 0, "Committee member did not retrieve any proposed blocks."
             print(str(comm_member.return_idx()) + " is now checking their candidate blocks.")
             print(str(len(comm_member.candidate_blocks)) + " blocks retrieved.")
-            while not winning_block:
-                for candidate_block in comm_member.candidate_blocks:
-                    print(str(candidate_block.get_produced_by()))
-                    # if the block signature is invalid, we ignore the block from the candidate blocks.
-                    if comm_member.verify_block(candidate_block):
-                        print("Candidate block has been verified by " + comm_member.return_idx())
-                        centroids_to_check = candidate_block.get_data()['centroids']
-                        # ToDo: consider local computation time here (for validation).
-                        print("Using the newly proposed global centroids from the candidate block, an average "
-                              "silhouette score of " + str(comm_member.validate_update(centroids_to_check)) +
-                              " was found.")
-                        # ToDo: check performance (validate proposed g_centroids) and vote accordingly.
-                        # Voting may be done through comm_member.approve_block(candidate_block).
-                        # A vote can either be cast if a certain threshold w.r.t performance is met, or,
-                        # alternatively, a vote can be cast only for the block having the best performance.
-                        vote = comm_member.approve_block(candidate_block)
-                        # send vote to corresponding leader.
-                        if vote:
-                            leader_idx = candidate_block.get_produced_by()
-                            print("Voted for " + leader_idx + "'s block")
-                            comm_member.send_vote(vote, leader_idx)
+            for candidate_block in comm_member.candidate_blocks:
+                # if the block signature is invalid, we ignore the block from the candidate blocks.
+                if comm_member.verify_signature(candidate_block):
+                    print(f"Candidate block from {candidate_block.get_produced_by()} "
+                          f"has been verified by {comm_member.return_idx()}")
+                    centroids_to_check = candidate_block.get_data()['centroids']
+                    # ToDo: consider local computation time here (for validation).
+                    print("Using the newly proposed global centroids from the candidate block, an average "
+                          "silhouette score of " + str(comm_member.validate_update(centroids_to_check)) +
+                          " was found.")
+                    # Voting may be done through comm_member.approve_block(candidate_block).
+                    # A vote can either be cast if a certain threshold w.r.t performance is met, or,
+                    # alternatively, a vote can be cast only for the block having the best performance.
+                    # sign the hash of the best performing candidate block to produce a vote.
+                    vote = comm_member.approve_block(candidate_block)
+                    # send vote to corresponding leader.
+                    if vote:
+                        leader_idx = candidate_block.get_produced_by()
+                        print(f"Voted for {leader_idx}'s block")
+                        comm_member.send_vote(vote, leader_idx)
 
-                            # given device_idx, check whether the number of votes exceeds a majority.
-                            for leader in leaders_this_round:
-                                if leader.return_idx() == leader_idx:
-                                    if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
-                                        winning_block = True
-                                        winner = leader
-                                        print(f"{leader_idx} has received a majority vote for their block.")
-                                        # break here.
-                                        break
-                    else:
-                        print("Candidate block could not be verified. \n"
-                              "Block originates from device having idx: " + str(candidate_block.get_produced_by()))
+                        # given device_idx, check whether the number of votes exceeds a majority.
+                        for leader in leaders_this_round:
+                            if leader.return_idx() == leader_idx:
+                                if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
+                                    winning_block = True
+                                    winner = leader
+                                    winner.serialize_votes()  # serialize votes and add result to the proposed block.
+                                    print(f"{leader_idx} has received a majority vote for their block.")
+                                    # break here.
+                                    break
+
+                else:
+                    print("Candidate block could not be verified. \n"
+                          "Block originates from device having idx: " + str(candidate_block.get_produced_by()))
+            if winning_block:
+                break
 
         # vii. leader that obtained a majority vote append their block to the chain and broadcast it to all devices
-        # ToDo: implement winning_block boolean, meaning whether a committee member has found a winning block.
         # also consider whether multiple blocks can receive (positive) votes by a single committee member, or,
         # alternatively, have committee members vote on a single block each.
         if winning_block:
-            # sign the hash of the best performing candidate block to produce a vote.
-            winner.add_block(winner.proposed_block)
-            winner.propagate_block(winner.proposed_block)
-            # select a committee member to request others to download the block after propagation
-            committee_members_this_round[-1].request_to_download(winner.proposed_block)
-            for block in device_list[-1].blockchain.get_chain_structure():
-                print(str(block))
-            if winner.blockchain.get_chain_length() == 2:  # 100 comm rounds + genesis block.
-                for device in device_list:
-                    for i in range(len(device.dataset)-2):
-                        plt.scatter(device.dataset[i][0], device.dataset[i][1], color='green', alpha=.3)
-                plt.scatter(device_list[-1].dataset[:, 0], device_list[-1].dataset[:, 1], color='purple', alpha=.5)
-                plt.scatter(device_list[-2].dataset[:, 0], device_list[-2].dataset[:, 1], color='cyan', alpha=.5)
-                plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='orange')
-                plt.scatter(winner.retrieve_global_centroids()[:, 0], winner.retrieve_global_centroids()[:, 1],
-                            color='k')
-                plt.show()
+            if winner.request_final_block_verification():
+                winner.add_block(winner.proposed_block)
+                winner.propagate_block(winner.proposed_block)
+                # select a committee member to request others to download the block after propagation (or gossip)
+                committee_members_this_round[-1].request_to_download(winner.proposed_block)
+                for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
+                    print(str(block))
+                # for block in device_list[-1].blockchain.get_chain_structure():
+                #     print(str(block))
+                if winner.blockchain.get_chain_length() == 101:  # 100 comm rounds + genesis block.
+                    # for block in winner.blockchain.get_chain_structure():
+                    #     if block.get_vote_serial() is not None:
+                    #         print(len(block.get_vote_serial()), len(block.get_vote_serial().hex()))
+                    for device in device_list:
+                        for i in range(len(device.dataset) - 2):
+                            plt.scatter(device.dataset[i][0], device.dataset[i][1], color='green', alpha=.3)
+                    plt.scatter(device_list[-1].dataset[:, 0], device_list[-1].dataset[:, 1], color='purple', alpha=.5)
+                    plt.scatter(device_list[-2].dataset[:, 0], device_list[-2].dataset[:, 1], color='cyan', alpha=.5)
+                    plt.scatter(init_centroids[:, 0], init_centroids[:, 1], color='orange')
+                    plt.scatter(winner.retrieve_global_centroids()[:, 0], winner.retrieve_global_centroids()[:, 1],
+                                color='k')
+                    plt.show()
+        else:
+            # reinitialize the global model or attempt to re-run this round depending on some condition.
+            # ToDo: figure out when to reinitialize entirely and when to re-run only the comm_round.
+            pass

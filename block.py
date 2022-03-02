@@ -8,13 +8,15 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         self.hash = hashlib.sha256()
         self.index = index
         self.previous_hash = previous_hash  # refer to the last block (link them together)
-        self.nonce = nonce  # for proof-of-work
+        self.nonce = nonce  # for proof-of-work, if difficulty > 0.
         self.data = data  # all parameters (and feedback) should be in data
         self.timestamp = str(dt.datetime.now())
         self.signature = signature
         # leader specific
         self.produced_by = produced_by
         self.miner_pubkey = miner_pubkey
+        self.vote_serialization = None
+        self.block_time = self.timestamp
 
     def mine(self, difficulty):
         self.hash.update(str(self).encode('utf-8'))
@@ -23,15 +25,16 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
             self.hash = hashlib.sha256()
             self.hash.update(str(self).encode('utf-8'))
 
-    # ToDo: improve way of showing the block contents.
-    # this string representation is now (exclusively) used for hashing/signing.
-    # a different representation, such __dict__(self) may be used to print block contents.
+    # ToDo: figure out whether more fields should be in the block representation.
+    # N.B. this string representation is also used for hashing/signing.
     def __str__(self):
-        return "{} {} {} {} {}".format(self.index, self.previous_hash.hexdigest(), self.data, self.timestamp,
-                                       self.produced_by)
-
-    # def nonce_increment(self):
-    #     self.nonce += 1
+        return f"index: {self.index}, \n" \
+               f"previous hash: {self.previous_hash.hexdigest()}, \n" \
+               f"data: {self.data}, \n" \
+               f"produced by: {self.produced_by}, \n" \
+               f"votes serial: {self.vote_serialization}. \n" \
+               f"block generation time: {self.timestamp}, \n" \
+               f"block finalization time: {self.block_time}"
 
     ''' signature functions '''
 
@@ -40,6 +43,12 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
 
     def set_signature(self, signature):
         self.signature = signature
+
+    def set_vote_serial(self, vote_serialization):
+        self.vote_serialization = vote_serialization
+
+    def set_block_time(self, block_time):
+        self.block_time = str(block_time)
 
     ''' getters '''
 
@@ -66,3 +75,6 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
 
     def get_miner_pk(self):
         return self.miner_pubkey
+
+    def get_vote_serial(self):
+        return self.vote_serialization
