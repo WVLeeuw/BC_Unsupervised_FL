@@ -31,10 +31,15 @@ class Blockchain:
         block.mine(self.difficulty)
         self._add_to_chain(block)
 
-    def create_genesis_block(self, data=None):
+    def create_genesis_block(self, device_idxs=None, centroids=None):
         h = hashlib.sha256()
         h.update(''.encode('utf-8'))
         # data = np.zeros((2, 2))
+        data = dict()
+        if device_idxs:
+            data['reputation'] = dict.fromkeys(device_idxs, (1, 1))
+            data['contribution'] = dict.fromkeys(device_idxs, 0)
+        data['centroids'] = centroids
         genesis = Block(index=1, data=data, previous_hash=h, produced_by="Genesis")
         genesis.mine(self.difficulty)
         self.blocks.append(genesis)

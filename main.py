@@ -1,5 +1,6 @@
 import hashlib
 import math
+import copy
 
 import block
 from block import Block
@@ -40,57 +41,48 @@ parser.add_argument('-lc', '--num_local_centroids', type=int, default=3, help='n
                                                                               'models')
 parser.add_argument('-le', '--num_local_epochs', type=int, default=1, help='number of epochs to perform for the '
                                                                            'acquisition of local update')
-parser.add_argument('-eps', '--epsilon', type=float, default=0.01, help='threshold for the difference between the '
-                                                                        'location of newly computed centroids and '
-                                                                        'previous global centroids s.t. when that '
-                                                                        'difference is less than epsilon, '
-                                                                        'the learning process ends.')
-
-# BC attributes (consensus & committee parameters)
-parser.add_argument('-vh', '--validator_threshold', type=float, default=1.0, help='threshold value of a difference in '
-                                                                                  'accuracy with which to identify '
-                                                                                  'malicious data owners')
+parser.add_argument('-eps', '--epsilon', type=float, default=0.01,
+                    help='threshold for the difference between the location of newly computed centroids and previous '
+                         'global centroids s.t. when that difference is less than epsilon, the learning process ends.')
 
 # Additional BC attributes (to make entire process more efficient)
-parser.add_argument('-cmt', '--committee_member_wait_time', type=float, default=0.0, help="default time window during "
-                                                                                          "which committee members "
-                                                                                          "wait for local updates to "
-                                                                                          "be sent. Wait time of 0.0 "
-                                                                                          "is associated with no time "
-                                                                                          "limit.")
-parser.add_argument('-cmh', '--committee_member_threshold', type=float, default=1.0, help="threshold value for the "
-                                                                                          "difference in performance"
-                                                                                          " to determine whether to "
-                                                                                          "consider a local update")
+parser.add_argument('-cmut', '--committee_member_update_wait_time', type=float, default=0.0,
+                    help="time window during which committee members wait for local updates to be sent. Wait time of "
+                         "0.0 is associated with no time limit.")
+parser.add_argument('-cmbt', '--committee_member_block_wait_time', type=float, default=0.0,
+                    help="time window during which committee member wait for block proposals to be sent. Wait time of "
+                         "0.0 is associated with no time limit.")
+parser.add_argument('-cmh', '--committee_member_threshold', type=float, default=1.0,
+                    help="threshold value for the difference in performance to determine whether to consider a local "
+                         "update")
+parser.add_argument('-lwt', '--leader_wait_time', type=float, default=1.0,
+                    help="time window during which leaders wait for committee members to send their resulting "
+                         "aggregate after they obtained the local updates from data owners. Wait time of 0.0 is "
+                         "associated with no time limit.")
 
 # distributed system attributes
 parser.add_argument('-ns', '--network_stability', type=float, default=1.0, help='the odds of a device being and '
                                                                                 'staying online')
-parser.add_argument('-els', '--equal_link_speed', type=int, default=1, help='used to simulate transmission delay. If '
-                                                                            'set to 1, every device has equal link '
-                                                                            'speed (bytes/sec). If set to 0, '
-                                                                            'link speed is determined randomly.')
-parser.add_argument('-dts', '--data_transmission_speed', type=float, default=70000.0, help="volume of data that is "
-                                                                                           "transmitted per second "
-                                                                                           "when -els == 1.")
-parser.add_argument('-ecp', '--equal_computation_power', type=int, default=1, help='used to simulation computation '
-                                                                                   'power. If set to 1, every device '
-                                                                                   'has equal computation power. If '
-                                                                                   'set to 0, computation power is '
-                                                                                   'determined randomly.')
+parser.add_argument('-els', '--equal_link_speed', type=int, default=1,
+                    help='used to simulate transmission delay. If set to 1, every device has equal link speed ('
+                         'bytes/sec). If set to 0, link speed is determined randomly.')
+parser.add_argument('-dts', '--data_transmission_speed', type=float, default=70000.0,
+                    help="volume of data that is transmitted per second when -els == 1.")
+parser.add_argument('-ecp', '--equal_computation_power', type=int, default=1,
+                    help='used to simulation computation power. If set to 1, every device has equal computation '
+                         'power. If set to 0, computation power is determined randomly.')
 
 # simulation attributes
-parser.add_argument('-ha', '--hard_assign', type=str, default='*,*,*', help='number of devices assigned to the roles '
-                                                                            'of data owner, committee member and '
-                                                                            'committee leader respectively')
+parser.add_argument('-ha', '--hard_assign', type=str, default='*,*,*',
+                    help='number of devices assigned to the roles of data owner, committee member and leader '
+                         'respectively')
 parser.add_argument('-cs', '--check_signature', type=int, default=1, help='whether to check signatures, used to save '
                                                                           'time or to assume trust')
-parser.add_argument('-aio', '--all_in_one_network', type=int, default=1, help='whether to have all devices be aware '
-                                                                              'of and connected to each other device '
-                                                                              ' in the network')
-parser.add_argument('-cc', '--closely_connected', type=int, default=1, help='whether to have all data owners be '
-                                                                            'connected to all committee members or '
-                                                                            'have the connection be one to one.')
+parser.add_argument('-aio', '--all_in_one_network', type=int, default=1,
+                    help='whether to have all devices be aware of and connected to each other device in the network')
+parser.add_argument('-cc', '--closely_connected', type=int, default=1,
+                    help='whether to have each data owners be connected to all committee members or have the '
+                         'connection be one to one.')
 
 if __name__ == '__main__':
 
@@ -147,7 +139,7 @@ if __name__ == '__main__':
     # 5. Create devices in the network and their genesis block. Using dummy data for now.
     devices_in_network = DevicesInNetwork(is_iid=args['IID'], num_devices=num_devices, num_malicious=num_malicious,
                                           network_stability=args['network_stability'],
-                                          committee_wait_time=args['committee_member_wait_time'],
+                                          committee_wait_time=args['committee_member_update_wait_time'],
                                           committee_threshold=args['committee_member_threshold'],
                                           equal_link_speed=args['equal_link_speed'],
                                           data_transmission_speed=args['data_transmission_speed'],
@@ -157,9 +149,12 @@ if __name__ == '__main__':
     device_list = list(devices_in_network.devices_set.values())
 
     # Extract the bounds on the data which was used for the creation of the devices.
+    # Also obtain all idxs for the initialization of reputation and contribution in genesis block.
     datasets = []
+    idxs = []
     for device in device_list:
         datasets.append(device.dataset)
+        idxs.append(device.return_idx())
     n_dims, n_clusters = 2, args['num_global_centroids']
 
     min_vals, max_vals = data_utils.obtain_bounds_multiple(np.asarray(datasets))
@@ -170,14 +165,14 @@ if __name__ == '__main__':
 
     data = dict()
     init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
-    data['centroids'] = init_centroids
+    centroids = init_centroids
     bc = Blockchain()
-    bc.create_genesis_block(data=data)
+    bc.create_genesis_block(device_idxs=idxs, centroids=centroids)
 
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
         # feed the created blockchain with genesis block to each device.
-        device.blockchain = bc
+        device.blockchain = copy.copy(bc)
         # num_local_centroids should also be a parameter of the device constructor.
         device.initialize_kmeans_model(n_clusters=device.elbow_method())
         # helper function simulating registration, effectively a setter in Device class
@@ -202,9 +197,11 @@ if __name__ == '__main__':
     print("Average choice of k found: " + str(math.ceil(sum(k_choices) / len(k_choices))))
     print(math.ceil(sum(k_choices) / len(k_choices)) == args['num_global_centroids'])
 
+    time_taken_per_round = []
     # BCFL-KMeans starts here
     for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
         # i. assign roles to devices dependent on contribution and reputation
+        comm_round_start_time = time.time()  # to keep track how long communication rounds take.
         data_owners_to_assign = data_owners_needed
         committee_members_to_assign = committee_members_needed
         leaders_to_assign = leaders_needed
@@ -216,7 +213,9 @@ if __name__ == '__main__':
         beta_samples = []
         for device in device_list:
             # could put device.idx in the tuple rather than device.
-            beta_samples.append(np.random.beta(device.reputation[0], device.reputation[1]))
+            # N.B. we assume that this sampling is done through smart contract at start of round.
+            pass  # ToDo: change this to obtain the beta samples from blockchain.
+            # beta_samples.append(np.random.beta(device.reputation[0], device.reputation[1]))
 
         # ToDo: assign roles depending on the sampled reputation values and existing contribution values
         random.shuffle(device_list)  # for now, we just randomly shuffle them
@@ -237,6 +236,11 @@ if __name__ == '__main__':
                 leaders_this_round.append(device)
             elif device.return_role() == "committee":
                 committee_members_this_round.append(device)
+
+        # ToDo: print useful statistics here for debugging at start of round.
+        if args['verbose']:
+            print('Some statistics useful for debugging pertaining to states of devices and their blockchains should '
+                  'be printed here.')
 
         # Reset variables for new comm round.
         for data_owner in data_owners_this_round:
@@ -275,29 +279,25 @@ if __name__ == '__main__':
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             # print(comm_member.return_idx() + " having associated data owners ...")
-            updates_per_idx = []
             # alternatively, we can use return_online_data_owners per committee member.
             # ToDo: consider link speeds here.
             for data_owner in comm_member.return_online_associated_data_owners():
                 # print(data_owner.return_idx())
-                comm_member.obtain_local_update(data_owner.retrieve_local_centroids(), data_owner.return_idx())
-                updates_per_idx.append((data_owner.return_idx(), data_owner.retrieve_local_centroids()))  # tuple
+                comm_member.obtain_local_update(data_owner.retrieve_local_centroids(), data_owner.return_nr_records(),
+                                                data_owner.return_idx())
 
             print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
-
-            for idx_update in updates_per_idx:
-                comm_member.update_contribution(idx_update)
 
             # validate local updates and aggregate usable local updates
             # ToDo: consider local computation power (for validation) here.
             usable_centroids = []  # not sure whether to use this or to simply check some performance measure
             updates_per_centroid = comm_member.match_local_with_global_centroids()
-            aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
+            # aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
+            aggr_centroids = comm_member.aggr_fed_avg()
             print(aggr_centroids)
             print(str(comm_member.validate_update(aggr_centroids)) +
                   " compared to previous global model performance of " +
                   str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
-            print(comm_member.compute_new_global_centroids(aggr_centroids))  # ToDo: delete for final version.
             # aggregated_local_centroids.append(comm_member.compute_new_global_centroids(aggr_centroids))
             aggregated_local_centroids.append(aggr_centroids)
 
@@ -387,7 +387,7 @@ if __name__ == '__main__':
                     print(str(block))
                 # for block in device_list[-1].blockchain.get_chain_structure():
                 #     print(str(block))
-                if winner.blockchain.get_chain_length() == 101:  # 100 comm rounds + genesis block.
+                if winner.blockchain.get_chain_length() == 1001:  # 100 comm rounds + genesis block.
                     # for block in winner.blockchain.get_chain_structure():
                     #     if block.get_vote_serial() is not None:
                     #         print(len(block.get_vote_serial()), len(block.get_vote_serial().hex()))
@@ -404,3 +404,13 @@ if __name__ == '__main__':
             # reinitialize the global model or attempt to re-run this round depending on some condition.
             # ToDo: figure out when to reinitialize entirely and when to re-run only the comm_round.
             pass
+
+        comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
+        print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
+        time_taken_per_round.append(comm_round_time_taken)
+
+    plt.plot(range(1, args['num_comm'] + 1), time_taken_per_round)
+    plt.xlabel('Round number')
+    plt.ylabel('Time taken (s)')
+    plt.ylim([0.5, 3])
+    plt.show()

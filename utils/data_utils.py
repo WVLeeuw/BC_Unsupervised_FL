@@ -1,4 +1,5 @@
 import os
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -100,12 +101,27 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             order_test = np.argsort(labels[:num_test])
             df_train = df[order_train]
             df_test = df[order_test]
-            return np.array_split(df_test, num_devices), np.array_split(df_train, num_devices), \
-                np.array_split(labels[:num_test][order_test], num_devices), \
-                np.array_split(labels[num_test:][order_train], num_devices)  # test, train, y_test, y_train
+            range_sizes_train = range(len(df_train)-(len(df_train)//4), len(df_train)+(len(df_train)//4))
+            range_sizes_test = range(len(df_test)-(len(df_test)//4), len(df_test)+(len(df_test)//4))
+            rand_sizes_train = [random.choice(range_sizes_train)]
+            rand_sizes_test = [random.choice(range_sizes_test)]
+            for i in range(1, num_devices):
+                rand_sizes_train.append(random.choice(range_sizes_train) + rand_sizes_train[i - 1])
+                rand_sizes_test.append(random.choice(range_sizes_test) + rand_sizes_test[i - 1])
+            return np.split(df_test, rand_sizes_test), np.split(df_train, rand_sizes_train), \
+                np.split(labels[:num_test][order_test], rand_sizes_test), \
+                np.split(labels[num_test:][order_train], rand_sizes_train)  # test, train, y_test, y_train
+            # return np.array_split(df_test, num_devices), np.array_split(df_train, num_devices), \
+            #     np.array_split(labels[:num_test][order_test], num_devices), \
+            #     np.array_split(labels[num_test:][order_train], num_devices)  # test, train, y_test, y_train
         else:
             order = np.argsort(labels)
-            return np.array_split(df[order], num_devices), np.array_split(labels[order], num_devices)  # X, y
+            range_sizes = range(num_devices - 5, num_devices + 5)
+            rand_sizes = [random.choice(range_sizes)]
+            for i in range(1, num_devices):
+                rand_sizes.append(random.choice(range_sizes) + rand_sizes[i-1])
+            return np.split(df[order], rand_sizes), np.split(labels[order], rand_sizes)  # X, y
+            # return np.array_split(df[order], num_devices), np.array_split(labels[order], num_devices)  # X, y
     elif is_iid:
         if split_train_test:
             if prop_test is not None:
@@ -113,13 +129,34 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             else:
                 prop = .2
             num_test = int(prop * len(df))
-            return np.array_split(df[:num_test], num_devices), np.array_split(df[num_test:], num_devices), \
-                np.array_split(labels[:num_test], num_devices), np.array_split(labels[num_test:], num_devices)
+            range_sizes_train = range((len(df)-num_test) - ((len(df)-num_test) // 4),
+                                      (len(df)-num_test) + ((len(df)-num_test) // 4))
+            range_sizes_test = range(num_test - (num_test // 4), num_test + (num_test // 4))
+            rand_sizes_train = [random.choice(range_sizes_train)]
+            rand_sizes_test = [random.choice(range_sizes_test)]
+            for i in range(1, num_devices):
+                rand_sizes_train.append(random.choice(range_sizes_train) + rand_sizes_train[i-1])
+                rand_sizes_test.append(random.choice(range_sizes_test) + rand_sizes_test[i-1])
+            return np.split(df[:num_test], rand_sizes_test[:-1]), np.split(df[num_test:], rand_sizes_train[:-1]), \
+                np.split(labels[:num_test], rand_sizes_test), np.split(labels[num_test:], rand_sizes_train)
+            # test, train, y_test, y_train
+            # return np.array_split(df[:num_test], num_devices), np.array_split(df[num_test:], num_devices), \
+            #     np.array_split(labels[:num_test], num_devices), np.array_split(labels[num_test:], num_devices)
             # test, train, y_test, y_train
         else:
-            return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+            range_sizes = range(num_devices - 5, num_devices + 5)
+            rand_sizes = [random.choice(range_sizes)]
+            for i in range(1, num_devices):
+                rand_sizes.append(random.choice(range_sizes) + rand_sizes[i-1])
+            return np.split(df, rand_sizes), np.split(labels, rand_sizes)
+            # return np.array_split(df, num_devices), np.array_split(labels, num_devices)
     else:  # this case should never be reached, but we include it anyway
-        return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+        range_sizes = range(num_devices - 5, num_devices + 5)
+        rand_sizes = []
+        for i in range(num_devices):
+            rand_sizes.append(random.choice(range_sizes))
+        return np.split(df, rand_sizes), np.split(labels, rand_sizes)
+        # return np.array_split(df, num_devices), np.array_split(labels, num_devices)
 
 
 # Function that returns the bounds (min, max) for each dimension in dataset df. Expects df to be a np.array.
