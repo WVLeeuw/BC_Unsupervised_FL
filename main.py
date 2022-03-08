@@ -168,6 +168,7 @@ if __name__ == '__main__':
     centroids = init_centroids
     bc = Blockchain()
     bc.create_genesis_block(device_idxs=idxs, centroids=centroids)
+    track_g_centroids = [init_centroids]
 
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
@@ -200,8 +201,9 @@ if __name__ == '__main__':
     time_taken_per_round = []
     # BCFL-KMeans starts here
     for comm_round in range(latest_round_num + 1, args['num_comm'] + 1):
-        # i. assign roles to devices dependent on contribution and reputation
         comm_round_start_time = time.time()  # to keep track how long communication rounds take.
+
+        # i. assign roles to devices dependent on contribution and reputation
         data_owners_to_assign = data_owners_needed
         committee_members_to_assign = committee_members_needed
         leaders_to_assign = leaders_needed
@@ -209,26 +211,33 @@ if __name__ == '__main__':
         data_owners_this_round = []
         committee_members_this_round = []
         leaders_this_round = []
-        # for each device, draw a sample from its beta distribution (dependent on its reputation)
-        beta_samples = []
-        for device in device_list:
-            # could put device.idx in the tuple rather than device.
-            # N.B. we assume that this sampling is done through smart contract at start of round.
-            pass  # ToDo: change this to obtain the beta samples from blockchain.
-            # beta_samples.append(np.random.beta(device.reputation[0], device.reputation[1]))
 
-        # ToDo: assign roles depending on the sampled reputation values and existing contribution values
-        random.shuffle(device_list)  # for now, we just randomly shuffle them
+        # for each device, draw a sample from its beta distribution (dependent on its reputation)
+        latest_block_data = device_list[-1].obtain_latest_block().get_data()
+        pos_rep = latest_block_data['pos_reputation']
+        neg_rep = latest_block_data['neg_reputation']
+        contr_vals = latest_block_data['contribution']
+        beta_samples = {}  # should be dictionary, key:sample_value
         for device in device_list:
-            if data_owners_to_assign:
+            # N.B. we assume that this sampling is done through smart contract at start of round.
+            pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
+            beta_samples[device.return_idx()] = np.random.beta(pos_count, neg_count)
+        sorted_beta_samples = {k: v for k, v in sorted(beta_samples.items(), key=lambda item: item[1])}
+        # take top n for n = committee + leaders, shuffle them and assign them.
+        sampled_devices = dict(list(sorted_beta_samples.items())[:committee_members_to_assign+leaders_to_assign+1])
+        sampled_devices_keys = list(sampled_devices.keys())
+        random.shuffle(sampled_devices_keys)
+        for device in device_list:
+            if device.return_idx() in sampled_devices_keys:
+                if leaders_to_assign:
+                    device.assign_leader_role()
+                    leaders_to_assign -= 1
+                elif committee_members_to_assign:
+                    device.assign_committee_role()
+                    committee_members_to_assign -= 1
+            elif data_owners_to_assign and contr_vals[device.return_idx()] >= 0:
                 device.assign_data_role()
                 data_owners_to_assign -= 1
-            elif committee_members_to_assign:
-                device.assign_committee_role()
-                committee_members_to_assign -= 1
-            elif leaders_to_assign:
-                device.assign_leader_role()
-                leaders_to_assign -= 1
 
             if device.return_role() == "data owner":
                 data_owners_this_round.append(device)
@@ -286,8 +295,6 @@ if __name__ == '__main__':
                 comm_member.obtain_local_update(data_owner.retrieve_local_centroids(), data_owner.return_nr_records(),
                                                 data_owner.return_idx())
 
-            print(comm_member.return_idx() + " retrieved local centroids: " + str(comm_member.local_centroids))
-
             # validate local updates and aggregate usable local updates
             # ToDo: consider local computation power (for validation) here.
             usable_centroids = []  # not sure whether to use this or to simply check some performance measure
@@ -308,6 +315,7 @@ if __name__ == '__main__':
             # ToDo: consider link speeds here.
             for comm_member in leader.return_online_committee_members():
                 comm_member.send_centroids(leader)
+                comm_member.send_feedback(leader)
                 # comm_members share their aggregates with the leader.
                 # if no aggregate is obtained for some committee members, leaders give negative feedback.
                 # otherwise, feedback is positive (only depends on retrieval, not quality of centroids).
@@ -400,6 +408,7 @@ if __name__ == '__main__':
                     plt.scatter(winner.retrieve_global_centroids()[:, 0], winner.retrieve_global_centroids()[:, 1],
                                 color='k')
                     plt.show()
+                track_g_centroids.append(winner.retrieve_global_centroids())
         else:
             # reinitialize the global model or attempt to re-run this round depending on some condition.
             # ToDo: figure out when to reinitialize entirely and when to re-run only the comm_round.
@@ -413,4 +422,13 @@ if __name__ == '__main__':
     plt.xlabel('Round number')
     plt.ylabel('Time taken (s)')
     plt.ylim([0.5, 3])
+    plt.show()
+
+    for device in device_list:
+        plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
+    # might need to do this for each idx in track_g_centroids
+    colors = ['purple', 'orange', 'cyan']
+    for i in range(len(track_g_centroids)):
+        for j in range(len(track_g_centroids[0])):
+            plt.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
     plt.show()

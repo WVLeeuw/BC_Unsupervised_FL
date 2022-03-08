@@ -10,6 +10,7 @@ from Crypto.PublicKey import RSA
 from sklearn import cluster
 from sklearn.metrics import silhouette_score
 from scipy.spatial.distance import euclidean
+from collections import defaultdict
 
 from blockchain import Blockchain
 from block import Block
@@ -76,7 +77,7 @@ class Device:
 
         # Committee members
         self.associated_data_owners_set = set()
-        self.performances_this_round = {}
+        self.contributions_this_round = {}
         # self.associated_leaders = set()
         self.obtained_local_centroids = []  # obtained local centroids from data owners.
         self.centroids_idxs_records = []  # list of tuples describing local centroids and their sender idx.
@@ -93,6 +94,7 @@ class Device:
 
         # Leaders
         self.seen_committee_idxs = set()
+        self.feedback_dicts = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}
         self.new_centroids = []
@@ -127,7 +129,7 @@ class Device:
     # following assignments are for hard assignments
     def assign_data_role(self):
         self.role = "data owner"
-        self.model = cluster.KMeans(n_clusters=3, max_iter=10)
+        self.model = cluster.KMeans(n_clusters=3, max_iter=5)
 
     def assign_committee_role(self):
         self.role = "committee"
@@ -183,10 +185,6 @@ class Device:
     # Returns the performance (using some performance measure) of a data owner for the current round
     def return_performance(self):
         return self.performance_this_round
-
-    # Returns the performances recorded from local updates by a committee member
-    def return_performances(self):
-        return self.performances_this_round
 
     ''' functions '''
 
@@ -352,9 +350,9 @@ class Device:
             for centroid in self.local_centroids:
                 nearest_g_centroids.append(self.find_nearest_global_centroid(centroid))
             self.model = cluster.KMeans(n_clusters=self.elbow, init=np.asarray(nearest_g_centroids), n_init=1,
-                                        max_iter=5)
+                                        max_iter=1)
         else:  # simply copy the global centroids
-            self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=5)
+            self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=1)
 
         self.model.fit(self.dataset)
         self.local_total_epoch += 5  # 5 local iterations were done this round.
@@ -375,8 +373,8 @@ class Device:
             model.fit(self.dataset)
             inertias.append(model.inertia_)
 
-        for i in range(1, len(inertias)-1):
-            if inertias[i] > .5 * inertias[i-1]:
+        for i in range(1, len(inertias) - 1):
+            if inertias[i] > .5 * inertias[i - 1]:
                 self.elbow = i + 1
                 return i + 1
 
@@ -413,6 +411,7 @@ class Device:
         return nearest_g_centroid
 
     def match_local_with_global_centroids(self):
+        print(f"{self.return_idx()} retrieved local centroids: {self.obtained_local_centroids}")
         updates_per_centroid = []
         for global_centroid in self.retrieve_global_centroids():
             to_aggregate = []
@@ -437,7 +436,6 @@ class Device:
         self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
 
-    # ToDo: implement FedAvg.
     def aggr_fed_avg(self):
         aggr_centroids = []
         updates_weights = []
@@ -450,6 +448,7 @@ class Device:
             curr_nr_records = local_update_tuple[1]
             curr_idx = local_update_tuple[-1]  # to be used for validation step and contribution update.
             scaling_fac = self._obtain_scaling_factor(curr_nr_records, total_nr_records, len(nr_records_list))
+            self.update_contribution((curr_idx, curr_centroids))
             updates_weights.append((curr_centroids, scaling_fac))
 
         to_aggregate_per_centroid = []
@@ -479,7 +478,6 @@ class Device:
         self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
 
-    # placeholder function, may not be necessary in the end.
     def _obtain_scaling_factor(self, datasize, totalsize, nr_data_owners):
         scaling_factor = datasize / (totalsize / nr_data_owners)
         return scaling_factor
@@ -500,30 +498,22 @@ class Device:
         leader.new_centroids.append(self.updated_centroids)
         leader.seen_committee_idxs.add(self.return_idx())
 
-    def send_aggr_and_feedback(self):
+    def send_feedback(self, leader):
         # requires update_contribution to alter a class variable (for Device type committee member).
         # this class variable can be retrieved here to send both the updated centroids and feedback per device.
-        pass
+        assert leader.return_role() == "leader", "Supplied device is not a leader."
+        leader.feedback_dicts.append(self.contributions_this_round)
+        leader.seen_committee_idxs.add(self.return_idx())
 
     # update_contribution can be called s.t for idx_update in self.centroid_idxs: self.update_contribution(idx_update)
-    # ToDo: rewrite this using the new centroids_idxs_records, rather than centroids_idxs. Also retrieve
-    #  the most recent contribution value from blockchain.
+    # ToDo: rewrite this using the new centroids_idxs_records, rather than centroids_idxs.
     def update_contribution(self, idx_update):
+        global_model_performance = self.validate_update(self.retrieve_global_centroids())
         # idx_update is a tuple being device_idx, local centroids
         device_idx = idx_update[0]
         local_centroids = idx_update[1]
         score = self.validate_update(local_centroids)
-        for peer in self.peer_list:
-            if peer.return_idx() == device_idx:
-                pass
-                # ToDo: change this to update the (local) contribution value for the data owner. To be sent to the
-                #  leader alongside the aggregated update s.t. they can put it in their proposed block.
-                # using performance of global model to compare with for now
-                # if score < self.validate_update(self.retrieve_global_centroids()):
-                #     peer.contribution -= 1 else: peer.contribution += 1
-
-        # recall: C(local t) = beta * (L(local) - L(global)) + (1-beta) * C(local t-1)
-        # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
+        self.contributions_this_round[device_idx] = score - global_model_performance
 
     def return_online_data_owners(self):
         online_data_owners = set()
@@ -597,7 +587,7 @@ class Device:
     # Used to reset variables at the start of a communication round (round-specific variables) for committee members.
     def reset_vars_committee_member(self):
         self.associated_data_owners_set = set()
-        self.performances_this_round = {}
+        self.feedback_dicts = {}
         self.committee_local_performance = float('-inf')
         self.obtained_local_centroids = []
         self.obtained_updates_unordered = {}
@@ -641,6 +631,8 @@ class Device:
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
+        data['contribution'] = self.update_contribution_final()
+        data['pos_reputation'], data['neg_reputation'] = self.update_reputation()
         block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
         block.set_signature(self.sign(block))
@@ -698,24 +690,52 @@ class Device:
             verify_results.append(comm_member.verify_block(self.proposed_block))
         return all(verify_results)  # returns False if any verification has failed.
 
-    # checks for each committee member whether they successfully executed comm. steps and
-    # if so, assigns positive feedback. Negative otherwise.
-    # ToDo: implement reputation update, checking whether an aggregate was obtained from each committee member.
-    def update_reputation(self, committee):
-        online_committee_members = self.return_online_committee_members()
-        for committee_member in online_committee_members:
-            if committee_member.return_idx() not in self.seen_committee_idxs:
-                cur_reputation = self.obtain_latest_block().get_data()['reputation'][committee_member.return_idx()]
-                new_reputation = (cur_reputation[0] + 1, cur_reputation[1])
-                pass
-                # increment unsuccessful operations by one
-            else:
-                pass
-                # increment successful operations by one
+    # checks for each committee member whether they successfully executed comm. steps and if so, assigns positive
+    # feedback. Negative otherwise.
+    # ToDo: decide whether to differentiate between having obtain both centroids AND
+    #  feedback or having just obtained centroids OR feedback.
+    def update_reputation(self):
+        committee_members_idxs = [peer.return_idx() for peer in self.peer_list if peer.return_role() == 'committee']
+        updated_pos_reputation = copy.copy(self.obtain_latest_block().get_data()['pos_reputation'])
+        updated_neg_reputation = copy.copy(self.obtain_latest_block().get_data()['neg_reputation'])
+
+        for member_idx in self.seen_committee_idxs:
+            if member_idx in updated_pos_reputation:  # check if key exists
+                updated_pos_reputation[member_idx] = updated_pos_reputation.get(member_idx, 1) + 1
+
+        for member_idx in committee_members_idxs:
+            if member_idx not in self.seen_committee_idxs:
+                if member_idx in updated_neg_reputation:
+                    updated_neg_reputation[member_idx] = updated_neg_reputation.get(member_idx, 1) + 1
+
+        return updated_pos_reputation, updated_neg_reputation
+
+    def update_contribution_final(self):
+        # Loop through feedback_dicts and aggregate the contributions found for each key into a new dictionary,
+        # to be added to the proposed block.
+        final_contr = copy.copy(self.obtain_latest_block().get_data()['contribution'])
+        beta = .3
+
+        contr_by_idx = defaultdict(list)
+        for contr_dict in self.feedback_dicts:
+            for device_idx, contr in contr_dict.items():
+                contr_by_idx[device_idx].append(contr)
+
+        final_contr_comp = {device_idx: sum(contributions) / len(contributions)
+                            for device_idx, contributions in contr_by_idx.items()}
+
+        # recall: C(local t) = beta * (L(local) - L(global)) + (1-beta) * C(local t-1)
+        # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
+        for device_idx in final_contr_comp.keys():
+            if device_idx in final_contr:
+                final_contr[device_idx] = beta * final_contr[device_idx] + (1-beta) * final_contr_comp[device_idx]
+
+        return final_contr
 
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
     def reset_vars_leader(self):
         self.seen_committee_idxs = set()
+        self.feedback_dicts = []
         self.new_centroids = []
         self.proposed_block = None
         self.received_votes = []

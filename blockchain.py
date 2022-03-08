@@ -37,8 +37,9 @@ class Blockchain:
         # data = np.zeros((2, 2))
         data = dict()
         if device_idxs:
-            data['reputation'] = dict.fromkeys(device_idxs, (1, 1))
             data['contribution'] = dict.fromkeys(device_idxs, 0)
+            data['pos_reputation'] = dict.fromkeys(device_idxs, 1)
+            data['neg_reputation'] = dict.fromkeys(device_idxs, 1)
         data['centroids'] = centroids
         genesis = Block(index=1, data=data, previous_hash=h, produced_by="Genesis")
         genesis.mine(self.difficulty)
