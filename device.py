@@ -19,18 +19,17 @@ from utils import data_utils
 
 
 class Device:
-    def __init__(self, idx, ds, network_stability, committee_wait_time, committee_threshold, equal_link_speed,
+    def __init__(self, idx, ds, local_epochs, network_stability, committee_update_wait_time, committee_block_wait_time,
+                 committee_threshold, contribution_lag, leader_wait_time, equal_link_speed,
                  base_data_transmission_speed, equal_computation_power, check_signature, stop_condition, bc=None,
                  model=None):
         # Identifier
         self.idx = idx
 
-        # Trust values --> recorded on blockchain. Initialized in genesis block.
-
         # Datasets
         self.dataset = ds[0]
         self.labels = ds[1]
-        self.nr_records = len(self.dataset)
+        self.nr_records = len(self.dataset)  # used for FedAvg.
 
         # P2P network variables
         self.online = True
@@ -44,7 +43,7 @@ class Device:
         self.devices_dict = None
         self.aio = False
 
-        # BC variables
+        # Blockchain variables
         self.check_signature = check_signature
         if bc is not None:
             self.blockchain = copy.copy(bc)
@@ -62,14 +61,20 @@ class Device:
         else:
             self.computation_power = random.randint(0, 4)
 
-        # Role-specific
+        # General parameters, not role-specific.
         self.role = None
         self.model = model
         self.elbow = None
         self.recent_centroids = []
         self.stop_condition = stop_condition
+        # Keys
+        self.modulus = None
+        self.private_key = None
+        self.public_key = None
 
+        # Role-specific parameters.
         # Data owners
+        self.local_epochs = local_epochs
         self.performance_this_round = float('-inf')
         self.local_update_time = None
         self.local_total_epoch = 0
@@ -84,8 +89,10 @@ class Device:
         self.obtained_updates_unordered = {}
         self.obtained_updates_arrival_order_queue = {}
         self.updated_centroids = []
-        self.committee_wait_time = committee_wait_time
+        self.committee_update_wait_time = committee_update_wait_time
+        self.committee_block_wait_time = committee_block_wait_time
         self.committee_threshold = committee_threshold
+        self.contribution_lag = contribution_lag
         self.committee_local_performance = float('-inf')  # this can be set after validation of new global centroids.
         self.candidate_blocks = []
         self.candidate_blocks_unordered = {}  # necessary for simulation, not reflective of real distributed system.
@@ -93,6 +100,7 @@ class Device:
         self.received_propagated_block = None
 
         # Leaders
+        self.leader_wait_time = leader_wait_time
         self.seen_committee_idxs = set()
         self.feedback_dicts = []
         self.obtained_aggregated_unordered = {}
@@ -100,14 +108,9 @@ class Device:
         self.new_centroids = []
         self.proposed_block = None
         self.received_votes = []
-        # ToDo: figure out whether we also require to determine an arrival order of votes. Time-outs?
+        # ToDo: determine the arrival order of votes, as the first block to receive a majority vote should be appended.
         # self.obtained_votes_unordered = {}
         # self.obtained_votes_arrival_order_queue = {}
-
-        # Keys
-        self.modulus = None
-        self.private_key = None
-        self.public_key = None
 
     ''' setters '''
 
@@ -121,15 +124,9 @@ class Device:
         self.devices_dict = devices_dict
         self.aio = aio
 
-    # Function assigning the roles to devices with some probability and constraints. May be done elsewhere.
-    def assign_role(self):
-        # non-equal prob, depends on proportion worker:committee:leaders.
-        pass
-
-    # following assignments are for hard assignments
     def assign_data_role(self):
         self.role = "data owner"
-        self.model = cluster.KMeans(n_clusters=3, max_iter=5)
+        self.model = cluster.KMeans(n_clusters=3, max_iter=self.local_epochs)
 
     def assign_committee_role(self):
         self.role = "committee"
@@ -139,11 +136,11 @@ class Device:
         self.role = "leader"
         self.generate_rsa_key()  # for signing blocks
 
-    # if anything goes wrong during the learning process of a certain device, can reset
+    # if anything goes wrong during the learning process of a certain device, this resets their k-means model.
     def initialize_kmeans_model(self, n_clusters=3, verbose=False):
         init_centroids = KMeans.randomly_init_centroid_range(values=data_utils.obtain_bounds(self.dataset),
                                                              n_dims=len(self.dataset[0]), repeats=n_clusters)
-        self.model = cluster.KMeans(n_clusters=n_clusters, init=init_centroids, n_init=1, max_iter=5)
+        self.model = cluster.KMeans(n_clusters=n_clusters, init=init_centroids, n_init=1, max_iter=self.local_epochs)
         self.model.fit(self.dataset)
         self.local_centroids = self.model.cluster_centers_
 
@@ -190,7 +187,7 @@ class Device:
 
     ''' not role-specific '''
 
-    def sign(self, msg):  # msg is assumed to be a block.
+    def sign(self, msg):
         msg = str(msg).encode('utf-8')
         h = int.from_bytes(sha256(msg).digest(), byteorder='big')
         signature = pow(h, self.private_key, self.modulus)
@@ -240,7 +237,6 @@ class Device:
             print(f"{self.idx} has gone offline.")
         return self.online
 
-    # ToDo: print new list (if needed).
     def update_peer_list(self):
         print(f"{self.idx} - {self.role} is updating their peer list...")
         old_peer_list = copy.copy(self.peer_list)
@@ -253,7 +249,8 @@ class Device:
             self.add_peers(online_peer.return_peers())
         # remove self from peer_list if it has been added
         self.remove_peers(self)
-        # code pertaining to blacklisted or otherwise untrusted devices goes here.
+
+        # ToDo: decide whether to use self.black_list at all or whether to solely rely on the reputation system.
         potentially_malicious_peers = set()
         for peer in self.peer_list:
             if peer.return_idx() in self.black_list:
@@ -261,7 +258,6 @@ class Device:
         # remove potentially malicious users
         self.remove_peers(potentially_malicious_peers)
 
-        # N.B. could print the resulting peer list here (for debugging)
         if old_peer_list == self.peer_list:
             print("Peer list has not been changed.")
         else:
@@ -273,7 +269,7 @@ class Device:
         else:
             potential_registrars = set(self.devices_dict.values())
             potential_registrars.discard(self)  # ensure self is not in the set of registrars
-            # pick a registrar
+            # pick a registrar randomly
             registrar = random.sample(potential_registrars, 1)[0]
             if check_online:
                 if not registrar.is_online():
@@ -286,13 +282,13 @@ class Device:
                     registrar = random.sample(online_registrars, 1)[0]
             # add registrar to peer list
             self.add_peers(registrar)
-            # and copy registrars peer list
+            # and copy registrar's peer list
             self.add_peers(registrar.return_peers())
             # have the registrar add the newly connected device
             registrar.add_peers(self)
             return True
 
-    # describes how to sync after failed validity or fork
+    # describes how to sync after reconnecting or failed validity check
     def resync_chain(self):
         longest_chain = None
         updated_from_peer = None
@@ -318,14 +314,20 @@ class Device:
         print("Chain could not be resynced.")
         return False
 
+    # called when the chain is resynced to retrieve the most recent global model.
+    # ToDo: change this to build a local model with n_clusters=self.elbow_method() instead, unless the local model
+    #  remains intact when a device disconnects as this method is then redundant.
     def update_model_after_resync(self):
         g_centroids = self.retrieve_global_centroids()
         self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids,
-                                    n_init=1, max_iter=10)
+                                    n_init=1, max_iter=self.local_epochs)
 
     def retrieve_global_centroids(self):
         latest_block = self.obtain_latest_block()
         return latest_block.get_data()['centroids']
+
+    def obtain_latest_block(self):
+        return self.blockchain.get_most_recent_block()
 
     # called by miners after they receive a majority vote.
     def add_block(self, block_to_add):
@@ -334,9 +336,6 @@ class Device:
     # in case a block is propagated (i.e. already mined and verified) and must be appended to a device's chain.
     def append_block(self, block_to_append):
         self.return_blockchain_obj().append_block(block_to_append)
-
-    def obtain_latest_block(self):
-        return self.blockchain.get_most_recent_block()
 
     ''' data owner '''
 
@@ -350,12 +349,13 @@ class Device:
             for centroid in self.local_centroids:
                 nearest_g_centroids.append(self.find_nearest_global_centroid(centroid))
             self.model = cluster.KMeans(n_clusters=self.elbow, init=np.asarray(nearest_g_centroids), n_init=1,
-                                        max_iter=1)
+                                        max_iter=self.local_epochs)
         else:  # simply copy the global centroids
-            self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1, max_iter=1)
+            self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids, n_init=1,
+                                        max_iter=self.local_epochs)
 
         self.model.fit(self.dataset)
-        self.local_total_epoch += 5  # 5 local iterations were done this round.
+        self.local_total_epoch += self.local_epochs  # add the nr of local epochs to the total nr of epochs ran.
         self.local_centroids = self.model.cluster_centers_
         # performance = self.model.inertia_
         self.local_update_time = time.time() - start_time
@@ -368,11 +368,13 @@ class Device:
         ks = range(2, 10)  # N.B. if this starts at 2, we return i + 1. If it starts at 1, we can return i.
         inertias = []
 
+        # For each k, perform 20 iterations and determine the resulting inertia.
         for k in ks:
             model = cluster.KMeans(n_clusters=k, max_iter=20)
             model.fit(self.dataset)
             inertias.append(model.inertia_)
 
+        # If for some k the inertia is more than half that of the inertia for previous k, we have found our elbow.
         for i in range(1, len(inertias) - 1):
             if inertias[i] > .5 * inertias[i - 1]:
                 self.elbow = i + 1
@@ -385,14 +387,12 @@ class Device:
 
     ''' committee member '''
 
-    # ToDo: use a list of tuples to determine new contribution value for data_owner_idx.
+    # retrieve local_centroids, nr_records (for FedAvg) and device_idx (to update contribution).
     def obtain_local_update(self, local_centroids, nr_records, data_owner_idx):
-        # retrieve local_centroids, nr_records (FedAvg) and device_idx (contribution).
-        self.obtained_local_centroids.append(local_centroids)
+        self.obtained_local_centroids.append(local_centroids)  # for simple averaging.
         self.centroids_idxs_records.append((local_centroids, nr_records, data_owner_idx))
 
-    # ToDo: rewrite s.t. we also take the device idx for update_contribution.
-    # in other words, we want validate_update to call update_contribution, which requires device idx.
+    # obtain the average silhouette score for the given local centroids.
     def validate_update(self, local_centroids):
         self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=1)
         cluster_labels = self.model.fit_predict(self.dataset)
@@ -400,6 +400,7 @@ class Device:
         # self.update_contribution(silhouette_avg)
         return silhouette_avg
 
+    # find the nearest global centroid given a centroid position.
     def find_nearest_global_centroid(self, centroid):
         g_centroids = self.retrieve_global_centroids()
         min_dist = float('inf')
@@ -410,6 +411,7 @@ class Device:
                 nearest_g_centroid = g_centroid
         return nearest_g_centroid
 
+    # produce a list of local centroids per global centroid, to be aggregated.
     def match_local_with_global_centroids(self):
         print(f"{self.return_idx()} retrieved local centroids: {self.obtained_local_centroids}")
         updates_per_centroid = []
@@ -423,6 +425,7 @@ class Device:
             updates_per_centroid.append(to_aggregate)
         return updates_per_centroid
 
+    # aggregate all local centroids that were matched to their respective global centroid to obtain the update.
     def aggr_updates(self, updates_per_centroid):
         aggr_centroids = []
         for i in range(len(updates_per_centroid)):
@@ -436,13 +439,14 @@ class Device:
         self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
 
+    # aggregate all local centroids per global centroid weighted by the no. records per data owner.
     def aggr_fed_avg(self):
         aggr_centroids = []
         updates_weights = []
         nr_records_list = [local_update_tuple[1] for local_update_tuple in self.centroids_idxs_records]
         total_nr_records = sum(nr_records_list)
 
-        # Obtain scaling factors. To be used for computing the weighted average.
+        # Obtain scaling factors --> no. records per data owner compared to average no. records.
         for local_update_tuple in self.centroids_idxs_records:
             curr_centroids = local_update_tuple[0]
             curr_nr_records = local_update_tuple[1]
@@ -471,27 +475,20 @@ class Device:
             weights = to_aggregate_per_centroid[i][1]
             if len(updates) > 0:
                 weighted_avgs = np.average(updates, axis=0, weights=weights)
-                aggr_centroids.append(weighted_avgs)  # cannot do .tolist() as with simple averaging (above).
-            else:
-                aggr_centroids.append(self.retrieve_global_centroids()[i])  # should then put the global centroid.
+                aggr_centroids.append(weighted_avgs)
+            else:  # if there are no updates for a specific centroid, we simply copy the previous global centroid.
+                aggr_centroids.append(self.retrieve_global_centroids()[i])
+                # N.B. if a centroid does not retrieve updates, does this weigh into our decision whether we should
+                # re-initialize the centroids?
 
+        # set the local updated centroids to be the aggregated centroids.
         self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
 
+    # Obtain a factor based on the no. records compared to the average no. records per data owner.
     def _obtain_scaling_factor(self, datasize, totalsize, nr_data_owners):
         scaling_factor = datasize / (totalsize / nr_data_owners)
         return scaling_factor
-
-    # This should be a function that is run by the leaders after obtaining aggr_centroids from all committee members.
-    def compute_new_global_centroids(self, aggr_centroids):
-        g_centroids = self.retrieve_global_centroids()
-        assert len(g_centroids) == len(aggr_centroids), "Number of global centroids not equal to aggregated centroids."
-        new_g_centroids = []
-        for i in range(len(g_centroids)):
-            new_g_centroids.append(.5 * g_centroids[i] + .5 * aggr_centroids[i])  # Simple update rule for now.
-        # print(self.validate_update(np.asarray(new_g_centroids)))
-        self.updated_centroids = np.asarray(new_g_centroids)
-        return np.asarray(new_g_centroids)
 
     def send_centroids(self, leader):
         assert leader.return_role() == "leader", "Supplied device is not a leader."
@@ -499,17 +496,13 @@ class Device:
         leader.seen_committee_idxs.add(self.return_idx())
 
     def send_feedback(self, leader):
-        # requires update_contribution to alter a class variable (for Device type committee member).
-        # this class variable can be retrieved here to send both the updated centroids and feedback per device.
         assert leader.return_role() == "leader", "Supplied device is not a leader."
         leader.feedback_dicts.append(self.contributions_this_round)
         leader.seen_committee_idxs.add(self.return_idx())
 
-    # update_contribution can be called s.t for idx_update in self.centroid_idxs: self.update_contribution(idx_update)
-    # ToDo: rewrite this using the new centroids_idxs_records, rather than centroids_idxs.
+    # Computes the contribution (in terms of gain in silhouette score) of a local update for a specific device.
     def update_contribution(self, idx_update):
         global_model_performance = self.validate_update(self.retrieve_global_centroids())
-        # idx_update is a tuple being device_idx, local centroids
         device_idx = idx_update[0]
         local_centroids = idx_update[1]
         score = self.validate_update(local_centroids)
@@ -546,7 +539,7 @@ class Device:
             return False
 
     # approve block effectively produces a vote for said block.
-    def approve_block(self, block):  # i.e. if verify_block then approve_block
+    def approve_block(self, block):
         msg = None
         # if the new block's centroids perform as well as or better than the previous block's centroids, we approve.
         if self.validate_update(block.get_data()['centroids']) >= \
@@ -554,6 +547,8 @@ class Device:
             msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key(), dt.datetime.now()]
         return msg
 
+    # accept the propagated block --> append it to our blockchain.
+    # ToDo: decide whether to keep black_list per device or reputation system suffices.
     def accept_propagated_block(self, propagated_block, source_idx):
         if source_idx not in self.black_list and propagated_block.get_hash() != self.obtain_latest_block().get_hash():
             self.append_block(propagated_block)
@@ -561,6 +556,7 @@ class Device:
             print(f"Either {source_idx} is in {self.return_idx()}'s blacklist or "
                   f"the block was already added to {self.return_idx()}'s chain.")
 
+    # Send a request to peers to download the propagated (and accepted) block from leader.
     def request_to_download(self, block_to_download):
         for peer in self.peer_list:
             if peer.is_online() and self.is_online():
@@ -569,9 +565,10 @@ class Device:
                         peer.obtain_latest_block().get_hash() != block_to_download.get_hash():
                     peer.append_block(block_to_download)
             else:
-                print(f"Either {peer.return_idx()} or {self.return_idx()} is currently offline and thus the block"
-                      f"could not be downloaded.")
+                print(f"Either {peer.return_idx()} or {self.return_idx()} is currently offline or the block was "
+                      f"already added to {peer.return_idx()}'s chain and thus the block could not be downloaded.")
 
+    # Sends the vote to the leader device.
     def send_vote(self, vote, device_idx):
         leader_found = False
         for peer in self.peer_list:
@@ -599,20 +596,21 @@ class Device:
 
     ''' leader '''
 
+    # Computes the new global centroids given the aggregated centroids from committee members.
     def compute_update(self):
         obtained_centroids = np.asarray(self.new_centroids)
         g_centroids = self.retrieve_global_centroids()
-        print(obtained_centroids.shape)  # in 'simple case': 5 comm_members each having 3 centroids having 2 dims.
-        # i.e. we want for each centroid (0, 1, ..., k) to average the results over all committee members.
-        # indexed like obtained_centroids[c][k][dim].
+        print(obtained_centroids.shape)
         updated_g_centroids = []
-        # compute aggregates.
+        # Compute aggregates.
         for i in range(len(obtained_centroids[0])):
             updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
 
         # compute new global centroids (simple update step).
         new_g_centroids = []
-        assert len(updated_g_centroids) == len(g_centroids)
+        assert len(updated_g_centroids) == len(g_centroids), "Number of global centroids is not equal to number of " \
+                                                             "aggregated centroids. "
+        # ToDo: use a predefined parameter here, rather than hard-coding .5.
         for i in range(len(updated_g_centroids)):
             new_g_centroids.append(.5 * g_centroids[i] + .5 * updated_g_centroids[i])
 
@@ -627,7 +625,9 @@ class Device:
 
         return np.asarray(new_g_centroids)
 
-    def propose_block(self, new_g_centroids):
+    # Build a candidate block from the newly produced global centroids, computed contribution scores and provide
+    # feedback on committee members by updating their reputation.
+    def build_block(self, new_g_centroids):
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
@@ -645,6 +645,8 @@ class Device:
         for committee_member in online_committee_members:
             committee_member.candidate_blocks.append(proposed_block)
 
+    # Broadcast a request to stop the global learning process. Called only when the stop condition is met.
+    # ToDo: implement behavior for handling stop requests.
     def _broadcast_stop_request(self):
         print('Stopping condition met! Requesting peers to stop global learning process...')
         pass
@@ -663,12 +665,12 @@ class Device:
                     online_committee_members.add(peer)
         return online_committee_members
 
-    # Q: Should this stay here as part of the leader functions, considering it is in fact a getter function?
     def return_received_votes(self):
         return self.received_votes
 
     # For block finalization, to prove that the leader has counted votes they add them to the proposed block before
     # appending.
+    # ToDo: figure out the relation between no. votes and the length of the serial produced here.
     def serialize_votes(self):
         assert self.proposed_block is not None, f"{self.return_idx()} has not proposed a block yet."
         obtained_signatures = []
@@ -682,6 +684,8 @@ class Device:
         signature = self.sign(self.proposed_block)
         self.proposed_block.set_signature(signature)
 
+    # Request verification on the proposed block by committee members.
+    # Returns True only if all committee members verified the block.
     def request_final_block_verification(self):
         assert self.proposed_block is not None, f"{self.return_idx()} has not proposed a block yet."
         comm_members = self.return_online_committee_members()
@@ -690,8 +694,8 @@ class Device:
             verify_results.append(comm_member.verify_block(self.proposed_block))
         return all(verify_results)  # returns False if any verification has failed.
 
-    # checks for each committee member whether they successfully executed comm. steps and if so, assigns positive
-    # feedback. Negative otherwise.
+    # checks for each committee member whether they successfully executed communication steps and if so,
+    # assigns positive feedback. Negative otherwise.
     # ToDo: decide whether to differentiate between having obtain both centroids AND
     #  feedback or having just obtained centroids OR feedback.
     def update_reputation(self):
@@ -710,11 +714,13 @@ class Device:
 
         return updated_pos_reputation, updated_neg_reputation
 
+    # aggregates the contribution values found per device for each committee member and
+    # returns the aggregated contribution scores.
     def update_contribution_final(self):
         # Loop through feedback_dicts and aggregate the contributions found for each key into a new dictionary,
         # to be added to the proposed block.
         final_contr = copy.copy(self.obtain_latest_block().get_data()['contribution'])
-        beta = .3
+        beta = self.contribution_lag
 
         contr_by_idx = defaultdict(list)
         for contr_dict in self.feedback_dicts:
@@ -745,9 +751,10 @@ class Device:
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
 class DevicesInNetwork(object):
-    def __init__(self, is_iid, num_devices, num_malicious, network_stability, committee_wait_time, committee_threshold,
-                 equal_link_speed, data_transmission_speed, equal_computation_power, check_signature, stop_condition,
-                 bc=None, dataset=None):
+    def __init__(self, is_iid, num_devices, num_malicious, local_epochs, network_stability, committee_update_wait_time,
+                 committee_block_wait_time, committee_threshold, contribution_lag, leader_wait_time, equal_link_speed,
+                 data_transmission_speed, equal_computation_power, check_signature, stop_condition, bc=None,
+                 dataset=None):
         self.dataset = dataset
         self.is_iid = is_iid
         self.num_devices = num_devices
@@ -756,11 +763,17 @@ class DevicesInNetwork(object):
         self.equal_link_speed = equal_link_speed
         self.equal_computation_power = equal_computation_power
         self.data_transmission_speed = data_transmission_speed
+        # data owner
+        self.local_epochs = local_epochs
         # committee
-        self.committee_wait_time = committee_wait_time
+        self.committee_update_wait_time = committee_update_wait_time
+        self.committee_block_wait_time = committee_block_wait_time
         self.committee_threshold = committee_threshold
+        self.contribution_lag = contribution_lag
         self.check_signature = check_signature
         self.stop_condition = stop_condition
+        # leader
+        self.leader_wait_time = leader_wait_time
         # blockchain
         if bc is not None:
             self.blockchain = copy.copy(bc)
@@ -782,9 +795,10 @@ class DevicesInNetwork(object):
             local_dataset = [train_data[i], labels[i]]
 
             device_idx = f'device_{i + 1}'
-            a_device = Device(device_idx, local_dataset, self.network_stability, self.committee_wait_time,
-                              self.committee_threshold, self.equal_link_speed, self.data_transmission_speed,
-                              self.equal_computation_power, self.check_signature, self.stop_condition,
-                              bc=self.blockchain)
+            a_device = Device(device_idx, local_dataset, self.local_epochs, self.network_stability,
+                              self.committee_update_wait_time, self.committee_block_wait_time, self.committee_threshold,
+                              self.contribution_lag, self.leader_wait_time, self.equal_link_speed,
+                              self.data_transmission_speed, self.equal_computation_power, self.check_signature,
+                              self.stop_condition, bc=self.blockchain)
             self.devices_set[device_idx] = a_device
             print(f"Creation of device having idx {device_idx} is done.")
