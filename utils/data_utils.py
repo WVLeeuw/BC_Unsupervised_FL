@@ -164,6 +164,10 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
 def obtain_bounds(df):
     min_vals = df.min(axis=0)
     max_vals = df.max(axis=0)
+    if isinstance(min_vals, pd.Series):
+        min_vals = min_vals.to_numpy()
+    if isinstance(max_vals, pd.Series):
+        max_vals = max_vals.to_numpy()
     return min_vals.flatten(), max_vals.flatten()
 
 
@@ -176,6 +180,10 @@ def obtain_bounds_multiple(dfs):
                 min_vals[dim] = min_vals_df[dim]
             if max_vals_df[dim] > max_vals[dim]:
                 max_vals[dim] = max_vals_df[dim]
+    if isinstance(min_vals, pd.Series):
+        min_vals = min_vals.to_numpy()
+    if isinstance(max_vals, pd.Series):
+        max_vals = max_vals.to_numpy()
     return min_vals, max_vals
 
 

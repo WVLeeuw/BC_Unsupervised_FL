@@ -20,7 +20,7 @@ from utils import data_utils
 
 class Device:
     def __init__(self, idx, ds, local_epochs, network_stability, committee_update_wait_time, committee_block_wait_time,
-                 committee_threshold, contribution_lag, leader_wait_time, equal_link_speed,
+                 committee_threshold, contribution_lag, fed_avg, leader_wait_time, global_update_lag, equal_link_speed,
                  base_data_transmission_speed, equal_computation_power, check_signature, stop_condition, bc=None,
                  model=None):
         # Identifier
@@ -38,7 +38,6 @@ class Device:
         self.equal_link_speed = equal_link_speed
         self.base_data_transmission_speed = base_data_transmission_speed
         self.equal_computation_power = equal_computation_power
-        self.black_list = set()
 
         self.devices_dict = None
         self.aio = False
@@ -93,6 +92,7 @@ class Device:
         self.committee_block_wait_time = committee_block_wait_time
         self.committee_threshold = committee_threshold
         self.contribution_lag = contribution_lag
+        self.fed_avg = fed_avg
         self.committee_local_performance = float('-inf')  # this can be set after validation of new global centroids.
         self.candidate_blocks = []
         self.candidate_blocks_unordered = {}  # necessary for simulation, not reflective of real distributed system.
@@ -101,13 +101,16 @@ class Device:
 
         # Leaders
         self.leader_wait_time = leader_wait_time
+        self.global_update_lag = global_update_lag
         self.seen_committee_idxs = set()
         self.feedback_dicts = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}
         self.new_centroids = []
+        self.deltas = []  # Euclidean distances between previous centroids and new centroids.
         self.proposed_block = None
         self.received_votes = []
+        self.stop_check = False
         # ToDo: determine the arrival order of votes, as the first block to receive a majority vote should be appended.
         # self.obtained_votes_unordered = {}
         # self.obtained_votes_arrival_order_queue = {}
@@ -155,11 +158,11 @@ class Device:
     def return_peers(self):
         return self.peer_list
 
-    def return_black_list(self):
-        return self.black_list
-
     def return_role(self):
         return self.role
+
+    def reset_role(self):
+        self.role = None
 
     def is_online(self):
         return self.online
@@ -178,6 +181,9 @@ class Device:
 
     def return_nr_records(self):
         return self.nr_records
+
+    def return_fed_avg(self):
+        return self.fed_avg
 
     # Returns the performance (using some performance measure) of a data owner for the current round
     def return_performance(self):
@@ -219,7 +225,7 @@ class Device:
         else:  # list otherwise
             self.peer_list.difference_update(peers_to_remove)
 
-    def switch_online_status(self):
+    def online_switcher(self):
         cur_status = self.online
         online_indicator = random.random()
         if online_indicator < self.network_stability:
@@ -249,14 +255,6 @@ class Device:
             self.add_peers(online_peer.return_peers())
         # remove self from peer_list if it has been added
         self.remove_peers(self)
-
-        # ToDo: decide whether to use self.black_list at all or whether to solely rely on the reputation system.
-        potentially_malicious_peers = set()
-        for peer in self.peer_list:
-            if peer.return_idx() in self.black_list:
-                potentially_malicious_peers.add(peer)
-        # remove potentially malicious users
-        self.remove_peers(potentially_malicious_peers)
 
         if old_peer_list == self.peer_list:
             print("Peer list has not been changed.")
@@ -548,13 +546,11 @@ class Device:
         return msg
 
     # accept the propagated block --> append it to our blockchain.
-    # ToDo: decide whether to keep black_list per device or reputation system suffices.
     def accept_propagated_block(self, propagated_block, source_idx):
-        if source_idx not in self.black_list and propagated_block.get_hash() != self.obtain_latest_block().get_hash():
+        if propagated_block.get_hash() != self.obtain_latest_block().get_hash():
             self.append_block(propagated_block)
         else:
-            print(f"Either {source_idx} is in {self.return_idx()}'s blacklist or "
-                  f"the block was already added to {self.return_idx()}'s chain.")
+            print(f"The block was already added to {self.return_idx()}'s chain.")
 
     # Send a request to peers to download the propagated (and accepted) block from leader.
     def request_to_download(self, block_to_download):
@@ -600,7 +596,7 @@ class Device:
     def compute_update(self):
         obtained_centroids = np.asarray(self.new_centroids)
         g_centroids = self.retrieve_global_centroids()
-        print(obtained_centroids.shape)
+        print(f"Obtained centroids have shape: {obtained_centroids.shape}")
         updated_g_centroids = []
         # Compute aggregates.
         for i in range(len(obtained_centroids[0])):
@@ -610,15 +606,16 @@ class Device:
         new_g_centroids = []
         assert len(updated_g_centroids) == len(g_centroids), "Number of global centroids is not equal to number of " \
                                                              "aggregated centroids. "
-        # ToDo: use a predefined parameter here, rather than hard-coding .5.
         for i in range(len(updated_g_centroids)):
-            new_g_centroids.append(.5 * g_centroids[i] + .5 * updated_g_centroids[i])
+            new_g_centroids.append(self.global_update_lag * g_centroids[i] +
+                                   (1-self.global_update_lag) * updated_g_centroids[i])
 
         deltas = []
         for i in range(len(g_centroids)):
             deltas.append(euclidean(g_centroids[i], new_g_centroids[i]))
         stop_per_centroid = [delta < self.stop_condition for delta in deltas]
         print(deltas, all(stop_per_centroid))
+        self.deltas = deltas
 
         if all(stop_per_centroid):
             self._broadcast_stop_request()
@@ -649,7 +646,13 @@ class Device:
     # ToDo: implement behavior for handling stop requests.
     def _broadcast_stop_request(self):
         print('Stopping condition met! Requesting peers to stop global learning process...')
-        pass
+        self.stop_check = True
+
+    def return_deltas(self):
+        return self.deltas
+
+    def return_stop_check(self):
+        return self.stop_check
 
     # Propagate the proposed block (received majority vote) to all committee members.
     def propagate_block(self, block_to_propagate):
@@ -747,14 +750,15 @@ class Device:
         self.received_votes = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}
+        self.stop_check = False
 
 
 # Class to define and build each Device as specified by the parameters supplied. Returns a list of Devices.
 class DevicesInNetwork(object):
     def __init__(self, is_iid, num_devices, num_malicious, local_epochs, network_stability, committee_update_wait_time,
-                 committee_block_wait_time, committee_threshold, contribution_lag, leader_wait_time, equal_link_speed,
-                 data_transmission_speed, equal_computation_power, check_signature, stop_condition, bc=None,
-                 dataset=None):
+                 committee_block_wait_time, committee_threshold, contribution_lag, fed_avg, leader_wait_time,
+                 global_update_lag, equal_link_speed, data_transmission_speed, equal_computation_power, check_signature,
+                 stop_condition, bc=None, dataset=None):
         self.dataset = dataset
         self.is_iid = is_iid
         self.num_devices = num_devices
@@ -769,11 +773,13 @@ class DevicesInNetwork(object):
         self.committee_update_wait_time = committee_update_wait_time
         self.committee_block_wait_time = committee_block_wait_time
         self.committee_threshold = committee_threshold
+        self.fed_avg = fed_avg
         self.contribution_lag = contribution_lag
         self.check_signature = check_signature
         self.stop_condition = stop_condition
         # leader
         self.leader_wait_time = leader_wait_time
+        self.global_update_lag = global_update_lag
         # blockchain
         if bc is not None:
             self.blockchain = copy.copy(bc)
@@ -787,7 +793,8 @@ class DevicesInNetwork(object):
     # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
     def _dataset_allocation(self):
         # read dataset
-        train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid, samples=500)
+        train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid,
+                                                  dataset=self.dataset, samples=500)
 
         # then create individual devices, each having their local dataset.
         for i in range(self.num_devices):
@@ -797,8 +804,8 @@ class DevicesInNetwork(object):
             device_idx = f'device_{i + 1}'
             a_device = Device(device_idx, local_dataset, self.local_epochs, self.network_stability,
                               self.committee_update_wait_time, self.committee_block_wait_time, self.committee_threshold,
-                              self.contribution_lag, self.leader_wait_time, self.equal_link_speed,
-                              self.data_transmission_speed, self.equal_computation_power, self.check_signature,
-                              self.stop_condition, bc=self.blockchain)
+                              self.contribution_lag, self.fed_avg, self.leader_wait_time, self.global_update_lag,
+                              self.equal_link_speed,self.data_transmission_speed, self.equal_computation_power,
+                              self.check_signature, self.stop_condition, bc=self.blockchain)
             self.devices_set[device_idx] = a_device
             print(f"Creation of device having idx {device_idx} is done.")
