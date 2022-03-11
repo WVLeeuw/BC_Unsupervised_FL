@@ -21,8 +21,8 @@ from utils import data_utils
 class Device:
     def __init__(self, idx, ds, local_epochs, network_stability, committee_update_wait_time, committee_block_wait_time,
                  committee_threshold, contribution_lag, fed_avg, leader_wait_time, global_update_lag, equal_link_speed,
-                 base_data_transmission_speed, equal_computation_power, check_signature, stop_condition, bc=None,
-                 model=None):
+                 base_data_transmission_speed, equal_computation_power, is_malicious, check_signature, stop_condition,
+                 bc=None, model=None):
         # Identifier
         self.idx = idx
 
@@ -38,6 +38,7 @@ class Device:
         self.equal_link_speed = equal_link_speed
         self.base_data_transmission_speed = base_data_transmission_speed
         self.equal_computation_power = equal_computation_power
+        self.is_malicious = is_malicious
 
         self.devices_dict = None
         self.aio = False
@@ -115,6 +116,9 @@ class Device:
         # self.obtained_votes_unordered = {}
         # self.obtained_votes_arrival_order_queue = {}
 
+        # For malicious devices
+        self.variance_of_noise = None or []
+
     ''' setters '''
 
     def generate_rsa_key(self):
@@ -140,9 +144,13 @@ class Device:
         self.generate_rsa_key()  # for signing blocks
 
     # if anything goes wrong during the learning process of a certain device, this resets their k-means model.
-    def initialize_kmeans_model(self, n_clusters=3, verbose=False):
-        init_centroids = KMeans.randomly_init_centroid_range(values=data_utils.obtain_bounds(self.dataset),
-                                                             n_dims=len(self.dataset[0]), repeats=n_clusters)
+    def initialize_kmeans_model(self, n_dims, n_clusters=3, verbose=False):
+        bounds = data_utils.obtain_bounds(self.dataset)
+        bounds_per_dim = []
+        for i in range(len(bounds[0])):
+            bounds_per_dim.append([bounds[0][i], bounds[1][i]])
+
+        init_centroids = KMeans.randomly_init_centroid_range(values=bounds_per_dim, n_dims=n_dims, repeats=n_clusters)
         self.model = cluster.KMeans(n_clusters=n_clusters, init=init_centroids, n_init=1, max_iter=self.local_epochs)
         self.model.fit(self.dataset)
         self.local_centroids = self.model.cluster_centers_
@@ -166,6 +174,10 @@ class Device:
 
     def is_online(self):
         return self.online
+
+    # To check whether a malicious not is correctly excluded (i.e. poor contribution and/or reputation).
+    def return_is_malicious(self):
+        return self.is_malicious
 
     def return_blockchain_obj(self):
         return self.blockchain
@@ -199,6 +211,7 @@ class Device:
         signature = pow(h, self.private_key, self.modulus)
         return signature
 
+    # ToDo: consider local computation power here.
     def verify_signature(self, block):
         if self.check_signature:
             modulus = block.get_miner_pk()["modulus"]
@@ -210,7 +223,7 @@ class Device:
             if h == h_signed:
                 return True
             else:
-                return False  # placeholder
+                return False  # placeholder, may want different behavior here.
         return True
 
     def add_peers(self, new_peers):
@@ -236,15 +249,14 @@ class Device:
                 # update peer list
                 self.update_peer_list()
                 # resync chain
-                if self.resync_chain():
-                    self.update_model_after_resync()
+                self.resync_chain()
         else:
             self.online = False
             print(f"{self.idx} has gone offline.")
         return self.online
 
     def update_peer_list(self):
-        print(f"{self.idx} - {self.role} is updating their peer list...")
+        print(f"{self.idx} ({self.role}) is updating their peer list...")
         old_peer_list = copy.copy(self.peer_list)
         online_peers = set()
         for peer in self.peer_list:
@@ -287,6 +299,7 @@ class Device:
             return True
 
     # describes how to sync after reconnecting or failed validity check
+    # ToDo: figure out if there are any other locations than online_switcher() where this function should be called.
     def resync_chain(self):
         longest_chain = None
         updated_from_peer = None
@@ -308,17 +321,8 @@ class Device:
             longest_chain_struct = longest_chain.get_chain_structure()
             self.return_blockchain_obj().replace_chain(longest_chain_struct)
             print(f"{self.idx} chain resynced from peer {updated_from_peer}.")
-            return True
-        print("Chain could not be resynced.")
-        return False
-
-    # called when the chain is resynced to retrieve the most recent global model.
-    # ToDo: change this to build a local model with n_clusters=self.elbow_method() instead, unless the local model
-    #  remains intact when a device disconnects as this method is then redundant.
-    def update_model_after_resync(self):
-        g_centroids = self.retrieve_global_centroids()
-        self.model = cluster.KMeans(n_clusters=g_centroids.shape[0], init=g_centroids,
-                                    n_init=1, max_iter=self.local_epochs)
+        print(f"Chain was not resynced. Length of {self.return_idx()}'s chain is "
+              f"{self.return_blockchain_obj().get_chain_length()} blocks.")
 
     def retrieve_global_centroids(self):
         latest_block = self.obtain_latest_block()
@@ -337,6 +341,7 @@ class Device:
 
     ''' data owner '''
 
+    # ToDo: consider local computation power here.
     def local_update(self):
         start_time = time.time()
         # Retrieve the global centroids recorded in the most recent block.
@@ -358,6 +363,13 @@ class Device:
         # performance = self.model.inertia_
         self.local_update_time = time.time() - start_time
 
+    # ToDo: write function and consider local computation power here.
+    def malicious_local_update(self):
+        assert self.is_malicious, "Attempted to provide a malicious local update on a device that is not malicious."
+        # N.B. We can add noise or supply garbage updates (based on global centroids). If we do want to add noise,
+        # should use random with a given range (self.variance_of_noise).
+        pass
+
     def retrieve_local_centroids(self):
         return self.local_centroids
 
@@ -365,6 +377,7 @@ class Device:
     def elbow_method(self):
         ks = range(2, 10)  # N.B. if this starts at 2, we return i + 1. If it starts at 1, we can return i.
         inertias = []
+        elbow_found = False
 
         # For each k, perform 20 iterations and determine the resulting inertia.
         for k in ks:
@@ -376,7 +389,12 @@ class Device:
         for i in range(1, len(inertias) - 1):
             if inertias[i] > .5 * inertias[i - 1]:
                 self.elbow = i + 1
-                return i + 1
+                elbow_found = True
+                return self.elbow
+
+        if not elbow_found:
+            self.elbow = 2
+            return 2
 
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
@@ -391,12 +409,18 @@ class Device:
         self.centroids_idxs_records.append((local_centroids, nr_records, data_owner_idx))
 
     # obtain the average silhouette score for the given local centroids.
+    # ToDo: consider local computation power here.
     def validate_update(self, local_centroids):
         self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=1)
         cluster_labels = self.model.fit_predict(self.dataset)
         silhouette_avg = silhouette_score(self.dataset, cluster_labels)
         # self.update_contribution(silhouette_avg)
         return silhouette_avg
+
+    # ToDo: write function and do local computation power here.
+    def malicious_update_validation(self, local_centroids):
+        assert self.is_malicious, "Attempted to provide a malicious validation on a device that is not malicious."
+        pass
 
     # find the nearest global centroid given a centroid position.
     def find_nearest_global_centroid(self, centroid):
@@ -424,6 +448,7 @@ class Device:
         return updates_per_centroid
 
     # aggregate all local centroids that were matched to their respective global centroid to obtain the update.
+    # ToDo: consider local computation power here.
     def aggr_updates(self, updates_per_centroid):
         aggr_centroids = []
         for i in range(len(updates_per_centroid)):
@@ -438,6 +463,7 @@ class Device:
         return np.asarray(aggr_centroids)
 
     # aggregate all local centroids per global centroid weighted by the no. records per data owner.
+    # ToDo: consider local computation power here.
     def aggr_fed_avg(self):
         aggr_centroids = []
         updates_weights = []
@@ -482,6 +508,11 @@ class Device:
         # set the local updated centroids to be the aggregated centroids.
         self.updated_centroids = np.asarray(aggr_centroids)
         return np.asarray(aggr_centroids)
+
+    # ToDo: write function and consider local computation power here.
+    def malicious_aggr_updates(self, updates_per_centroid):
+        assert self.is_malicious, "Attempted to compute aggregates maliciously on a device that is not malicious."
+        pass
 
     # Obtain a factor based on the no. records compared to the average no. records per data owner.
     def _obtain_scaling_factor(self, datasize, totalsize, nr_data_owners):
@@ -565,6 +596,7 @@ class Device:
                       f"already added to {peer.return_idx()}'s chain and thus the block could not be downloaded.")
 
     # Sends the vote to the leader device.
+    # ToDo: put online_switcher() as the leader may be offline when the vote was sent.
     def send_vote(self, vote, device_idx):
         leader_found = False
         for peer in self.peer_list:
@@ -593,6 +625,7 @@ class Device:
     ''' leader '''
 
     # Computes the new global centroids given the aggregated centroids from committee members.
+    # ToDo: consider local computation power here.
     def compute_update(self):
         obtained_centroids = np.asarray(self.new_centroids)
         g_centroids = self.retrieve_global_centroids()
@@ -622,6 +655,11 @@ class Device:
 
         return np.asarray(new_g_centroids)
 
+    # ToDo: write function and consider local computation power here, if applicable.
+    def malicious_compute_update(self):
+        assert self.is_malicious, "Attempted to compute a malicious global update on a device that is not malicious."
+        pass
+
     # Build a candidate block from the newly produced global centroids, computed contribution scores and provide
     # feedback on committee members by updating their reputation.
     def build_block(self, new_g_centroids):
@@ -636,14 +674,19 @@ class Device:
         self.proposed_block = block
         return block
 
+    # ToDo: write function, including bypassing of regular global update computation and reputation system.
+    def build_malicious_block(self, new_g_centroids):
+        assert self.is_malicious, "Attempted to build a malicious block on a device that is not malicious."
+        pass
+
     # Add the proposed block from leader to the committee members' candidate blocks.
+    # ToDo: need to put online_switcher() per committee member.
     def broadcast_block(self, proposed_block):
         online_committee_members = self.return_online_committee_members()
         for committee_member in online_committee_members:
             committee_member.candidate_blocks.append(proposed_block)
 
     # Broadcast a request to stop the global learning process. Called only when the stop condition is met.
-    # ToDo: implement behavior for handling stop requests.
     def _broadcast_stop_request(self):
         print('Stopping condition met! Requesting peers to stop global learning process...')
         self.stop_check = True
@@ -684,8 +727,7 @@ class Device:
         serialized_votes = pickle.dumps(obtained_signatures)
         self.proposed_block.set_vote_serial(bytearray(serialized_votes))
         self.proposed_block.set_block_time(max(vote_timestamps))
-        signature = self.sign(self.proposed_block)
-        self.proposed_block.set_signature(signature)
+        self.proposed_block.set_signature(self.sign(self.proposed_block))
 
     # Request verification on the proposed block by committee members.
     # Returns True only if all committee members verified the block.
@@ -717,19 +759,22 @@ class Device:
 
         return updated_pos_reputation, updated_neg_reputation
 
-    # aggregates the contribution values found per device for each committee member and
-    # returns the aggregated contribution scores.
+    # aggregates the contribution values found per device for each committee member and returns the aggregated
+    # contribution scores.
+    # ToDo: consider local computation power here.
     def update_contribution_final(self):
         # Loop through feedback_dicts and aggregate the contributions found for each key into a new dictionary,
         # to be added to the proposed block.
         final_contr = copy.copy(self.obtain_latest_block().get_data()['contribution'])
         beta = self.contribution_lag
 
+        # produce a dictionary having the contribution values per device idx during this learning round.
         contr_by_idx = defaultdict(list)
         for contr_dict in self.feedback_dicts:
             for device_idx, contr in contr_dict.items():
                 contr_by_idx[device_idx].append(contr)
 
+        # obtain the average contribution computed during this learning round.
         final_contr_comp = {device_idx: sum(contributions) / len(contributions)
                             for device_idx, contributions in contr_by_idx.items()}
 
@@ -737,7 +782,7 @@ class Device:
         # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
         for device_idx in final_contr_comp.keys():
             if device_idx in final_contr:
-                final_contr[device_idx] = beta * final_contr[device_idx] + (1-beta) * final_contr_comp[device_idx]
+                final_contr[device_idx] = beta * final_contr_comp[device_idx] + (1-beta) * final_contr[device_idx]
 
         return final_contr
 
@@ -789,23 +834,31 @@ class DevicesInNetwork(object):
         self.devices_set = {}
         self._dataset_allocation()
 
-    # For now, let us allocate a (simple) testing dataset.
-    # ToDo: change this to use more sensible data, but still be dependent on said data (i.e. values)
+    # Split and allocate a given dataset among the devices in the network.
     def _dataset_allocation(self):
         # read dataset
         train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid,
                                                   dataset=self.dataset, samples=500)
 
+        malicious_nodes_set = []
+        if self.num_malicious:
+            malicious_nodes_set = random.sample(range(self.num_devices), self.num_malicious)
+
         # then create individual devices, each having their local dataset.
         for i in range(self.num_devices):
+            is_malicious = False
             # divide the data equally
             local_dataset = [train_data[i], labels[i]]
+
+            if i in malicious_nodes_set:
+                is_malicious = True
 
             device_idx = f'device_{i + 1}'
             a_device = Device(device_idx, local_dataset, self.local_epochs, self.network_stability,
                               self.committee_update_wait_time, self.committee_block_wait_time, self.committee_threshold,
                               self.contribution_lag, self.fed_avg, self.leader_wait_time, self.global_update_lag,
-                              self.equal_link_speed,self.data_transmission_speed, self.equal_computation_power,
-                              self.check_signature, self.stop_condition, bc=self.blockchain)
+                              self.equal_link_speed, self.data_transmission_speed, self.equal_computation_power,
+                              is_malicious, self.check_signature, self.stop_condition, bc=self.blockchain)
             self.devices_set[device_idx] = a_device
             print(f"Creation of device having idx {device_idx} is done.")
+        print("Creation of devices is done!")

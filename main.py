@@ -163,13 +163,12 @@ if __name__ == '__main__':
     for device in device_list:
         datasets.append(device.dataset)
         idxs.append(device.return_idx())
-    n_dims, n_clusters = 2, args['num_global_centroids']  # ToDo: fix hard coding the number of dimensions.
 
     min_vals, max_vals = data_utils.obtain_bounds_multiple(np.asarray(datasets))
     bounds = []
     for i in range(len(min_vals)):  # N.B. len(min_vals) should be equal to n_dims every single time.
         bounds.append([min_vals[i], max_vals[i]])
-    print(bounds)
+    n_dims, n_clusters = len(bounds), args['num_global_centroids']
 
     # Finally, produce the genesis block with initialized parameters.
     data = dict()
@@ -183,7 +182,7 @@ if __name__ == '__main__':
     for device in device_list:
         # feed the created blockchain with genesis block to each device.
         device.blockchain = copy.copy(bc)
-        device.initialize_kmeans_model(n_clusters=device.elbow_method())
+        device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
         # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
         device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
         device.register_in_network()
@@ -308,7 +307,8 @@ if __name__ == '__main__':
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
-            device.local_update()  # ToDo: consider local computation power here.
+            # local_centroids, local_update_time = device.local_update()
+            device.local_update()
             local_centroids = device.retrieve_local_centroids()
             if args['verbose']:
                 print(local_centroids)
@@ -335,11 +335,11 @@ if __name__ == '__main__':
             global_centroids = comm_member.retrieve_global_centroids()
             # ToDo: consider link speeds here.
             for data_owner in comm_member.return_online_associated_data_owners():
-                comm_member.obtain_local_update(data_owner.retrieve_local_centroids(), data_owner.return_nr_records(),
-                                                data_owner.return_idx())
+                if data_owner.online_switcher():
+                    comm_member.obtain_local_update(data_owner.retrieve_local_centroids(),
+                                                    data_owner.return_nr_records(), data_owner.return_idx())
 
             # validate local updates and aggregate usable local updates
-            # ToDo: consider local computation power (for validation) here.
             if comm_member.return_fed_avg():
                 aggr_centroids = comm_member.aggr_fed_avg()
             else:
@@ -356,13 +356,14 @@ if __name__ == '__main__':
         for leader in leaders_this_round:
             # ToDo: consider link speeds here.
             for comm_member in leader.return_online_committee_members():
+                # if leader.online_switcher():
                 comm_member.send_centroids(leader)  # committee members send their aggregated updates.
                 comm_member.send_feedback(leader)  # committee members send the feedback (in terms of contribution) \
                 # given to data owners.
 
             # v. leaders build candidate blocks using the obtained centroids and send it to committee members for
             # approval.
-            proposed_g_centroids = leader.compute_update()  # ToDo: consider local computation power here.
+            proposed_g_centroids = leader.compute_update()
             block = leader.build_block(proposed_g_centroids)
             block.set_signature(leader.sign(block))  # after building the block, leaders sign it.
             if args['verbose']:
@@ -374,22 +375,28 @@ if __name__ == '__main__':
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
         winning_block = False
         winner = None
+        # N.B. should loop through candidate blocks based on their arrival time at committee members,
+        # not loop through committee members then through their candidate blocks.
+        # ToDo: consider arrival time of candidate blocks at committee here (related to link speeds).
         for comm_member in committee_members_this_round:
-            assert len(comm_member.candidate_blocks) > 0, "Committee member did not retrieve any proposed blocks."
+            # assert len(comm_member.candidate_blocks) > 0, "Committee member did not retrieve any proposed blocks."
             print(str(comm_member.return_idx()) + " is now checking their candidate blocks.")
             print(str(len(comm_member.candidate_blocks)) + " blocks retrieved.")
+            # ToDo: put online_switcher(), committee member may go offline while handling their candidate blocks.
             for candidate_block in comm_member.candidate_blocks:
                 # check whether the signature on the block is valid, ignore the block otherwise.
                 if comm_member.verify_signature(candidate_block):
                     print(f"Candidate block from {candidate_block.get_produced_by()} "
                           f"has been verified by {comm_member.return_idx()}")
                     centroids_to_check = candidate_block.get_data()['centroids']
-                    # ToDo: consider local computation time here (for validation).
                     print("Using the newly proposed global centroids from the candidate block, an average "
                           "silhouette score of " + str(comm_member.validate_update(centroids_to_check)) +
                           " was found.")
                     # Determine whether the block should be voted for or not.
                     vote = comm_member.approve_block(candidate_block)
+                    # ToDo: consider link speeds here, and with it the arrival order of votes at leaders.
+                    # N.B. likely requires an extra loop through the votes by arrival order,
+                    # as the arrival order of votes is related to which block receives a majority vote first.
                     if vote:
                         leader_idx = candidate_block.get_produced_by()
                         print(f"Voted for {leader_idx}'s block")
@@ -413,9 +420,8 @@ if __name__ == '__main__':
 
         # vii. leader that obtained a majority vote append their block to their chain and propagate it to all
         # committee members. Afterward, committee members request their peers to download the winning block.
-
-        # check whether there is a centroid which was not updated.
         if winning_block:
+            # check whether there is a centroid which was not updated.
             if any(delta == 0 for delta in winner.return_deltas()):
                 print("We should re-initialize the centroids because at least one centroid was not updated.")
                 # Produce a new genesis block.
@@ -428,13 +434,15 @@ if __name__ == '__main__':
                 for device in device_list:
                     # feed the created blockchain with genesis block to each device.
                     device.blockchain = copy.copy(bc)
-                    device.initialize_kmeans_model(n_clusters=device.elbow_method())
+                    device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
                 num_reinitialized += 1
                 comm_round = 0  # finally, reset communication round to 0.
             elif winner.request_final_block_verification():
                 winner.add_block(winner.proposed_block)
+                # ToDo: consider link speeds here.
                 winner.propagate_block(winner.proposed_block)
                 # select a committee member to request others to download the block after appendage.
+                # ToDo: consider link speeds here.
                 committee_members_this_round[-1].request_to_download(winner.proposed_block)
                 if args['verbose']:
                     for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
@@ -447,6 +455,7 @@ if __name__ == '__main__':
         else:
             for leader in leaders_this_round:
                 # Code repetition for now. Can we write this into a function (i.e. def reinitialize())?
+                # check whether there is a centroid which was not updated.
                 if any(leader.return_deltas()) == 0.0:
                     print("We should re-initialize the centroids because at least one centroid was not updated.")
                     # Produce a new genesis block.
@@ -459,7 +468,7 @@ if __name__ == '__main__':
                     for device in device_list:
                         # feed the created blockchain with genesis block to each device.
                         device.blockchain = copy.copy(bc)
-                        device.initialize_kmeans_model(n_clusters=device.elbow_method())
+                        device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
                     num_reinitialized += 1
                     comm_round = 0  # finally, reset communication round to 0.
             num_rounds_no_winner += 1

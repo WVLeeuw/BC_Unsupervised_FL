@@ -3,7 +3,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.datasets import load_iris, load_breast_cancer, make_blobs
+from sklearn.datasets import load_iris, load_breast_cancer, load_wine, make_blobs
 from sklearn.model_selection import train_test_split
 
 project_dir = os.path.dirname(os.getcwd())
@@ -25,7 +25,7 @@ def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True
 
 def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, prop_test=None, dims=2, samples=100,
               clusters=3, verbose=False):
-    eligible_datasets = ['iris', 'breast cancer', 'heart disease', 'forest types', 'blobs']
+    eligible_datasets = ['iris', 'breast cancer', 'wine', 'heart disease', 'forest types', 'blobs']
     if dataset not in eligible_datasets:
         print("No dataset was requested or the requested dataset could not be retrieved.")
         print("Defaulting to generating blobs...")
@@ -36,13 +36,19 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
             iris = load_iris()
             df = pd.DataFrame(iris.data, columns=iris.feature_names)
             labels = iris.target
-            return split_data(df, labels, num_devices, split_train_test, prop_test, is_iid)
+            return split_data(df.to_numpy(), labels, num_devices, split_train_test, prop_test, is_iid)
 
         if dataset == 'breast cancer':
             breast_cancer = load_breast_cancer()
             df = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
             labels = breast_cancer.target
-            return split_data(df, labels, num_devices, split_train_test, prop_test, is_iid)
+            return split_data(df.to_numpy(), labels, num_devices, split_train_test, prop_test, is_iid)
+
+        if dataset == 'wine':
+            wine = load_wine()
+            df = pd.DataFrame(wine.data, columns=wine.feature_names)
+            labels = wine.target
+            return split_data(df.to_numpy(), labels, num_devices, split_train_test, prop_test, is_iid)
 
         if dataset == 'heart disease':
             df = pd.read_csv("../data/heart_disease_cleveland.csv")  # not sure how to retrieve just labels here...
@@ -101,8 +107,12 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             order_test = np.argsort(labels[:num_test])
             df_train = df[order_train]
             df_test = df[order_test]
-            range_sizes_train = range(len(df_train)-(len(df_train)//4), len(df_train)+(len(df_train)//4))
-            range_sizes_test = range(len(df_test)-(len(df_test)//4), len(df_test)+(len(df_test)//4))
+            exp_train_per_device = round(len(df_train)/num_devices)
+            exp_test_per_device = round(len(df_test)/num_devices)
+            range_sizes_train = range(exp_train_per_device - exp_train_per_device//4,
+                                      exp_train_per_device + exp_train_per_device//4)
+            range_sizes_test = range(exp_test_per_device - exp_test_per_device//4,
+                                     exp_test_per_device + exp_test_per_device//4)
             rand_sizes_train = [random.choice(range_sizes_train)]
             rand_sizes_test = [random.choice(range_sizes_test)]
             for i in range(1, num_devices):
@@ -111,17 +121,15 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             return np.split(df_test, rand_sizes_test), np.split(df_train, rand_sizes_train), \
                 np.split(labels[:num_test][order_test], rand_sizes_test), \
                 np.split(labels[num_test:][order_train], rand_sizes_train)  # test, train, y_test, y_train
-            # return np.array_split(df_test, num_devices), np.array_split(df_train, num_devices), \
-            #     np.array_split(labels[:num_test][order_test], num_devices), \
-            #     np.array_split(labels[num_test:][order_train], num_devices)  # test, train, y_test, y_train
         else:
             order = np.argsort(labels)
-            range_sizes = range(num_devices - 5, num_devices + 5)
+            exp_records_per_device = round(len(df)/num_devices)
+            range_sizes = range(exp_records_per_device - exp_records_per_device//4,
+                                exp_records_per_device + exp_records_per_device//4)
             rand_sizes = [random.choice(range_sizes)]
             for i in range(1, num_devices):
                 rand_sizes.append(random.choice(range_sizes) + rand_sizes[i-1])
             return np.split(df[order], rand_sizes), np.split(labels[order], rand_sizes)  # X, y
-            # return np.array_split(df[order], num_devices), np.array_split(labels[order], num_devices)  # X, y
     elif is_iid:
         if split_train_test:
             if prop_test is not None:
@@ -129,9 +137,12 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             else:
                 prop = .2
             num_test = int(prop * len(df))
-            range_sizes_train = range((len(df)-num_test) - ((len(df)-num_test) // 4),
-                                      (len(df)-num_test) + ((len(df)-num_test) // 4))
-            range_sizes_test = range(num_test - (num_test // 4), num_test + (num_test // 4))
+            exp_train_per_device = round((len(df)-num_test)/num_devices)
+            exp_test_per_device = round(num_test/num_devices)
+            range_sizes_train = range(exp_train_per_device - exp_train_per_device//4,
+                                      exp_train_per_device + exp_train_per_device//4)
+            range_sizes_test = range(exp_test_per_device - exp_test_per_device//4,
+                                     exp_test_per_device + exp_test_per_device//4)
             rand_sizes_train = [random.choice(range_sizes_train)]
             rand_sizes_test = [random.choice(range_sizes_test)]
             for i in range(1, num_devices):
@@ -140,23 +151,22 @@ def split_data(df, labels, num_devices, split_train_test=False, prop_test=None, 
             return np.split(df[:num_test], rand_sizes_test[:-1]), np.split(df[num_test:], rand_sizes_train[:-1]), \
                 np.split(labels[:num_test], rand_sizes_test), np.split(labels[num_test:], rand_sizes_train)
             # test, train, y_test, y_train
-            # return np.array_split(df[:num_test], num_devices), np.array_split(df[num_test:], num_devices), \
-            #     np.array_split(labels[:num_test], num_devices), np.array_split(labels[num_test:], num_devices)
-            # test, train, y_test, y_train
         else:
-            range_sizes = range(num_devices - 5, num_devices + 5)
+            exp_records_per_device = round(len(df) / num_devices)
+            range_sizes = range(exp_records_per_device - exp_records_per_device//4,
+                                exp_records_per_device + exp_records_per_device//4)
             rand_sizes = [random.choice(range_sizes)]
             for i in range(1, num_devices):
                 rand_sizes.append(random.choice(range_sizes) + rand_sizes[i-1])
-            return np.split(df, rand_sizes), np.split(labels, rand_sizes)
-            # return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+            return np.split(df, rand_sizes), np.split(labels, rand_sizes)  # X, y
     else:  # this case should never be reached, but we include it anyway
-        range_sizes = range(num_devices - 5, num_devices + 5)
+        exp_records_per_device = round(len(df) / num_devices)
+        range_sizes = range(exp_records_per_device - exp_records_per_device//4,
+                            exp_records_per_device + exp_records_per_device//4)
         rand_sizes = []
         for i in range(num_devices):
             rand_sizes.append(random.choice(range_sizes))
-        return np.split(df, rand_sizes), np.split(labels, rand_sizes)
-        # return np.array_split(df, num_devices), np.array_split(labels, num_devices)
+        return np.split(df, rand_sizes), np.split(labels, rand_sizes)  # X, y
 
 
 # Function that returns the bounds (min, max) for each dimension in dataset df. Expects df to be a np.array.

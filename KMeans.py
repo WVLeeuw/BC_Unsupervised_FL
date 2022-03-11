@@ -10,22 +10,21 @@ def randomly_init_centroid(min_value, max_value, n_dims, repeats=1):
 
 
 def randomly_init_centroid_range(values, n_dims, repeats=1):
-    if len(values) == n_dims:
-        if repeats == 1:
+    assert len(values) == n_dims, "Must supply a range of values that has equal length as the number of features in " \
+                                  "the dataset. "
+    if repeats == 1:
+        centroid = []
+        for value in values:
+            centroid.append(value[0] + (value[1] - value[0]) * np.random.rand())
+        return np.asarray(centroid)
+    else:
+        centroids = []
+        for i in range(repeats):
             centroid = []
             for value in values:
                 centroid.append(value[0] + (value[1] - value[0]) * np.random.rand())
-            return np.asarray(centroid)
-        else:
-            centroids = []
-            for i in range(repeats):
-                centroid = []
-                for value in values:
-                    centroid.append(value[0] + (value[1] - value[0]) * np.random.rand())
-                centroids.append(centroid)
-            return np.asarray(centroids)
-    else:
-        print("Must supply a range of values that has equal length as the number of features in the dataset.")
+            centroids.append(centroid)
+        return np.asarray(centroids)
 
 
 class KMeans:
