@@ -59,7 +59,7 @@ class Device:
         if equal_computation_power:
             self.computation_power = 1
         else:
-            self.computation_power = random.randint(0, 4)
+            self.computation_power = random.randint(1, 4)
 
         # General parameters, not role-specific.
         self.role = None
@@ -94,10 +94,11 @@ class Device:
         self.committee_threshold = committee_threshold
         self.contribution_lag = contribution_lag
         self.fed_avg = fed_avg
-        self.committee_local_performance = float('-inf')  # this can be set after validation of new global centroids.
+        self.committee_validation_time = None
+        self.committee_aggregation_time = None
         self.candidate_blocks = []
         self.candidate_blocks_unordered = {}  # necessary for simulation, not reflective of real distributed system.
-        self.candidate_blocks_arrival_order_queue = {}
+        self.candidate_blocks_ordered = {}
         self.received_propagated_block = None
 
         # Leaders
@@ -110,6 +111,8 @@ class Device:
         self.new_centroids = []
         self.deltas = []  # Euclidean distances between previous centroids and new centroids.
         self.proposed_block = None
+        self.global_update_time = None
+        self.proposal_time = None
         self.received_votes = []
         self.stop_check = False
         # ToDo: determine the arrival order of votes, as the first block to receive a majority vote should be appended.
@@ -211,7 +214,6 @@ class Device:
         signature = pow(h, self.private_key, self.modulus)
         return signature
 
-    # ToDo: consider local computation power here.
     def verify_signature(self, block):
         if self.check_signature:
             modulus = block.get_miner_pk()["modulus"]
@@ -341,7 +343,6 @@ class Device:
 
     ''' data owner '''
 
-    # ToDo: consider local computation power here.
     def local_update(self):
         start_time = time.time()
         # Retrieve the global centroids recorded in the most recent block.
@@ -361,7 +362,13 @@ class Device:
         self.local_total_epoch += self.local_epochs  # add the nr of local epochs to the total nr of epochs ran.
         self.local_centroids = self.model.cluster_centers_
         # performance = self.model.inertia_
-        self.local_update_time = time.time() - start_time
+        self.local_update_time = (time.time() - start_time) / self.computation_power
+
+    def return_local_update(self):
+        return self.retrieve_local_centroids(), self.return_nr_records(), self.return_idx()
+
+    def return_local_update_time(self):
+        return self.local_update_time
 
     # ToDo: write function and consider local computation power here.
     def malicious_local_update(self):
@@ -403,19 +410,30 @@ class Device:
 
     ''' committee member '''
 
+    def return_update_wait_time(self):
+        return self.committee_update_wait_time
+
+    def return_block_wait_time(self):
+        return self.committee_block_wait_time
+
     # retrieve local_centroids, nr_records (for FedAvg) and device_idx (to update contribution).
     def obtain_local_update(self, local_centroids, nr_records, data_owner_idx):
         self.obtained_local_centroids.append(local_centroids)  # for simple averaging.
         self.centroids_idxs_records.append((local_centroids, nr_records, data_owner_idx))
 
     # obtain the average silhouette score for the given local centroids.
-    # ToDo: consider local computation power here.
     def validate_update(self, local_centroids):
+        validation_time = time.time()
         self.model = cluster.KMeans(n_clusters=local_centroids.shape[0], init=local_centroids, n_init=1, max_iter=1)
         cluster_labels = self.model.fit_predict(self.dataset)
         silhouette_avg = silhouette_score(self.dataset, cluster_labels)
         # self.update_contribution(silhouette_avg)
+        validation_time = (time.time() - validation_time) / self.computation_power
+        self.committee_validation_time = validation_time
         return silhouette_avg
+
+    def return_validation_time(self):
+        return self.committee_validation_time
 
     # ToDo: write function and do local computation power here.
     def malicious_update_validation(self, local_centroids):
@@ -448,8 +466,8 @@ class Device:
         return updates_per_centroid
 
     # aggregate all local centroids that were matched to their respective global centroid to obtain the update.
-    # ToDo: consider local computation power here.
     def aggr_updates(self, updates_per_centroid):
+        aggregation_time = time.time()
         aggr_centroids = []
         for i in range(len(updates_per_centroid)):
             if not isinstance(updates_per_centroid[i], np.ndarray):  # convert to np.ndarray to use numpy functions.
@@ -460,11 +478,13 @@ class Device:
             else:  # committee member received no updates for this centroid
                 aggr_centroids.append(self.retrieve_global_centroids()[i])  # should then put the global centroid.
         self.updated_centroids = np.asarray(aggr_centroids)
+        aggregation_time = (time.time() - aggregation_time) / self.computation_power
+        self.committee_aggregation_time = aggregation_time
         return np.asarray(aggr_centroids)
 
     # aggregate all local centroids per global centroid weighted by the no. records per data owner.
-    # ToDo: consider local computation power here.
     def aggr_fed_avg(self):
+        aggregation_time = time.time()
         aggr_centroids = []
         updates_weights = []
         nr_records_list = [local_update_tuple[1] for local_update_tuple in self.centroids_idxs_records]
@@ -507,7 +527,12 @@ class Device:
 
         # set the local updated centroids to be the aggregated centroids.
         self.updated_centroids = np.asarray(aggr_centroids)
+        aggregation_time = (time.time() - aggregation_time) / self.computation_power
+        self.committee_aggregation_time = aggregation_time
         return np.asarray(aggr_centroids)
+
+    def return_aggregation_time(self):
+        return self.committee_aggregation_time
 
     # ToDo: write function and consider local computation power here.
     def malicious_aggr_updates(self, updates_per_centroid):
@@ -519,15 +544,8 @@ class Device:
         scaling_factor = datasize / (totalsize / nr_data_owners)
         return scaling_factor
 
-    def send_centroids(self, leader):
-        assert leader.return_role() == "leader", "Supplied device is not a leader."
-        leader.new_centroids.append(self.updated_centroids)
-        leader.seen_committee_idxs.add(self.return_idx())
-
-    def send_feedback(self, leader):
-        assert leader.return_role() == "leader", "Supplied device is not a leader."
-        leader.feedback_dicts.append(self.contributions_this_round)
-        leader.seen_committee_idxs.add(self.return_idx())
+    def return_aggregate_and_feedback(self):
+        return self.updated_centroids, self.contributions_this_round, self.return_idx()
 
     # Computes the contribution (in terms of gain in silhouette score) of a local update for a specific device.
     def update_contribution(self, idx_update):
@@ -562,10 +580,21 @@ class Device:
 
     # ToDo: figure out whether to verify more block characteristics or just signature.
     def verify_block(self, block):
+        verification_time = time.time()
         if self.verify_signature(block):
+            verification_time = (time.time() - verification_time) / self.computation_power
             return True
         else:
             return False
+
+    def add_to_candidate_blocks(self, block, arrival_time):
+        self.candidate_blocks.append(block)
+        self.candidate_blocks_unordered[arrival_time] = block
+
+    def order_candidate_blocks(self):
+        candidate_blocks = self.candidate_blocks_unordered
+        self.candidate_blocks_ordered.update(dict(sorted(candidate_blocks.items())))
+        return self.candidate_blocks_ordered
 
     # approve block effectively produces a vote for said block.
     def approve_block(self, block):
@@ -596,11 +625,10 @@ class Device:
                       f"already added to {peer.return_idx()}'s chain and thus the block could not be downloaded.")
 
     # Sends the vote to the leader device.
-    # ToDo: put online_switcher() as the leader may be offline when the vote was sent.
     def send_vote(self, vote, device_idx):
         leader_found = False
         for peer in self.peer_list:
-            if peer.return_idx() == device_idx and peer.return_role() == 'leader':
+            if peer.return_idx() == device_idx and peer.return_role() == 'leader' and peer.online_switcher():
                 peer.received_votes.append(vote)
                 leader_found = True
         if not leader_found:
@@ -613,7 +641,8 @@ class Device:
     def reset_vars_committee_member(self):
         self.associated_data_owners_set = set()
         self.feedback_dicts = {}
-        self.committee_local_performance = float('-inf')
+        self.committee_validation_time = None
+        self.committee_aggregation_time = None
         self.obtained_local_centroids = []
         self.obtained_updates_unordered = {}
         self.updated_centroids = []
@@ -624,9 +653,12 @@ class Device:
 
     ''' leader '''
 
+    def return_aggr_wait_time(self):
+        return self.leader_wait_time
+
     # Computes the new global centroids given the aggregated centroids from committee members.
-    # ToDo: consider local computation power here.
     def compute_update(self):
+        global_update_computation_time = time.time()
         obtained_centroids = np.asarray(self.new_centroids)
         g_centroids = self.retrieve_global_centroids()
         print(f"Obtained centroids have shape: {obtained_centroids.shape}")
@@ -653,6 +685,8 @@ class Device:
         if all(stop_per_centroid):
             self._broadcast_stop_request()
 
+        global_update_computation_time = (time.time() - global_update_computation_time) / self.computation_power
+        self.global_update_time = global_update_computation_time
         return np.asarray(new_g_centroids)
 
     # ToDo: write function and consider local computation power here, if applicable.
@@ -660,9 +694,15 @@ class Device:
         assert self.is_malicious, "Attempted to compute a malicious global update on a device that is not malicious."
         pass
 
+    def obtain_aggr_and_feedback(self, aggregated_centroids, feedback, committee_idx):
+        self.new_centroids.append(aggregated_centroids)
+        self.feedback_dicts.append(feedback)
+        self.seen_committee_idxs.add(committee_idx)
+
     # Build a candidate block from the newly produced global centroids, computed contribution scores and provide
     # feedback on committee members by updating their reputation.
     def build_block(self, new_g_centroids):
+        block_proposal_time = time.time()
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
@@ -672,6 +712,8 @@ class Device:
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
         block.set_signature(self.sign(block))
         self.proposed_block = block
+        block_proposal_time = (time.time() - block_proposal_time) / self.computation_power
+        self.proposal_time = block_proposal_time
         return block
 
     # ToDo: write function, including bypassing of regular global update computation and reputation system.
@@ -680,11 +722,8 @@ class Device:
         pass
 
     # Add the proposed block from leader to the committee members' candidate blocks.
-    # ToDo: need to put online_switcher() per committee member.
-    def broadcast_block(self, proposed_block):
-        online_committee_members = self.return_online_committee_members()
-        for committee_member in online_committee_members:
-            committee_member.candidate_blocks.append(proposed_block)
+    def broadcast_block(self):
+        return self.proposed_block, self.global_update_time + self.proposal_time
 
     # Broadcast a request to stop the global learning process. Called only when the stop condition is met.
     def _broadcast_stop_request(self):
@@ -761,10 +800,10 @@ class Device:
 
     # aggregates the contribution values found per device for each committee member and returns the aggregated
     # contribution scores.
-    # ToDo: consider local computation power here.
     def update_contribution_final(self):
         # Loop through feedback_dicts and aggregate the contributions found for each key into a new dictionary,
         # to be added to the proposed block.
+        contribution_update_time = time.time()
         final_contr = copy.copy(self.obtain_latest_block().get_data()['contribution'])
         beta = self.contribution_lag
 
@@ -784,6 +823,7 @@ class Device:
             if device_idx in final_contr:
                 final_contr[device_idx] = beta * final_contr_comp[device_idx] + (1-beta) * final_contr[device_idx]
 
+        contribution_update_time = (time.time() - contribution_update_time) / self.computation_power
         return final_contr
 
     # Used to reset variables at the start of a communication round (round-specific variables) for leaders.
@@ -792,6 +832,8 @@ class Device:
         self.feedback_dicts = []
         self.new_centroids = []
         self.proposed_block = None
+        self.proposal_time = None
+        self.global_update_time = None
         self.received_votes = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}

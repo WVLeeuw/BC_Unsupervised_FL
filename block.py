@@ -25,7 +25,6 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
             self.hash = hashlib.sha256()
             self.hash.update(str(self).encode('utf-8'))
 
-    # ToDo: split all fields in data s.t. each one starts at a new line (for clarity).
     # N.B. this string representation is also used for hashing/signing.
     def __str__(self):
         return f"index: {self.index}, \n" \

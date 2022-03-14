@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 import os
 import sys
+from sys import getsizeof
 import argparse
 import random
 import time
@@ -59,7 +60,7 @@ parser.add_argument('-cmbt', '--committee_member_block_wait_time', type=float, d
 parser.add_argument('-cmh', '--committee_member_threshold', type=float, default=0.0,
                     help="threshold value for the difference in performance to determine whether to consider a local "
                          "update")
-parser.add_argument('-lwt', '--leader_wait_time', type=float, default=1.0,
+parser.add_argument('-lwt', '--leader_wait_time', type=float, default=0.0,
                     help="time window during which leaders wait for committee members to send their resulting "
                          "aggregate after they obtained the local updates from data owners. Wait time of 0.0 is "
                          "associated with no time limit.")
@@ -236,7 +237,7 @@ if __name__ == '__main__':
             pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
             if pos_count == neg_count == 1:  # ToDo: check whether this is the only condition to be chosen to catch up.
                 # assign committee role with 10% probability.
-                if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign//4:
+                if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 4:
                     chosen_catch_up.append(device.return_idx())
 
             # check whether the device was a committee member in the previous round, not eligible otherwise.
@@ -304,6 +305,9 @@ if __name__ == '__main__':
             if device.return_role() == "data owner":
                 data_owners_this_round.append(device)
 
+            # finally, check whether the devices are online.
+            device.online_switcher()
+
         # ToDo: print more useful statistics here for debugging at start of round.
         if args['verbose']:
             print(f"Number of leaders this round: {len(leaders_this_round)} \n"
@@ -320,7 +324,6 @@ if __name__ == '__main__':
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
-            # local_centroids, local_update_time = device.local_update()
             device.local_update()
             if args['verbose']:
                 local_centroids = device.retrieve_local_centroids()
@@ -346,90 +349,188 @@ if __name__ == '__main__':
         aggregated_local_centroids = []
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
-            # ToDo: consider link speeds here.
-            for data_owner in comm_member.return_online_associated_data_owners():
-                if data_owner.online_switcher():
-                    comm_member.obtain_local_update(data_owner.retrieve_local_centroids(),
-                                                    data_owner.return_nr_records(), data_owner.return_idx())
+            if args['committee_member_update_wait_time']:
+                print(f"Committee local update wait time is specified as {args['committee_member_update_wait_time']} "
+                      f"seconds. Allowing each data owner to perform local training until time limit.")
+                for data_owner in comm_member.return_online_associated_data_owners():
+                    total_time_tracker = 0
+                    data_owner_link_speed = data_owner.return_link_speed()
+                    lower_link_speed = comm_member.return_link_speed() if \
+                        comm_member.return_link_speed() < data_owner_link_speed else data_owner_link_speed
+                    if data_owner.online_switcher():
+                        local_update_spent_time = data_owner.return_local_update_time()
+                        local_update, nr_records, data_owner_idx = data_owner.return_local_update()
+                        local_update_size = getsizeof([local_update, nr_records, data_owner_idx])
+                        transmission_delay = local_update_size / lower_link_speed
+                        local_update_total_time = local_update_spent_time + transmission_delay
+                        # check whether the time taken was less than the allowed time for local updating.
+                        if local_update_total_time < comm_member.return_update_wait_time():
+                            if comm_member.online_switcher():
+                                comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
+                    else:
+                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update.")
+            else:
+                for data_owner in comm_member.return_online_associated_data_owners():
+                    data_owner_link_speed = data_owner.return_link_speed()
+                    lower_link_speed = comm_member.return_link_speed() if \
+                        comm_member.return_link_speed() < data_owner_link_speed else data_owner_link_speed
+                    if data_owner.online_switcher():
+                        local_update_spent_time = data_owner.return_local_update_time()
+                        local_update, nr_records, data_owner_idx = data_owner.return_local_update()
+                        local_update_size = getsizeof([local_update, nr_records, data_owner_idx])
+                        transmission_delay = local_update_size / lower_link_speed
+                        local_update_total_time = local_update_spent_time + transmission_delay
+                        # finally, obtain the local update.
+                        if comm_member.online_switcher():
+                            comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
+                    else:
+                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update.")
 
             # validate local updates and aggregate usable local updates
-            if comm_member.return_fed_avg():
-                aggr_centroids = comm_member.aggr_fed_avg()
-            else:
-                updates_per_centroid = comm_member.match_local_with_global_centroids()
-                aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
+            if comm_member.online_switcher():
+                if comm_member.return_fed_avg():
+                    aggr_centroids = comm_member.aggr_fed_avg()
+                else:
+                    updates_per_centroid = comm_member.match_local_with_global_centroids()
+                    aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
 
-            print(aggr_centroids)
-            print(str(comm_member.validate_update(aggr_centroids)) +
-                  " compared to previous global model performance of " +
-                  str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
-            aggregated_local_centroids.append(aggr_centroids)
+                aggr_time = comm_member.return_aggregation_time()
+                if args['verbose']:
+                    print(aggr_centroids)
+                    print(str(comm_member.validate_update(aggr_centroids)) +
+                          " compared to previous global model performance of " +
+                          str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
+                aggregated_local_centroids.append(aggr_centroids)  # not used anymore.
 
         # iv. committee members send updated centroids to every leader
+        block_arrival_queue = {}
         for leader in leaders_this_round:
-            # ToDo: consider link speeds here.
-            for comm_member in leader.return_online_committee_members():
-                # if leader.online_switcher():
-                comm_member.send_centroids(leader)  # committee members send their aggregated updates.
-                comm_member.send_feedback(leader)  # committee members send the feedback (in terms of contribution) \
-                # given to data owners.
+            if args['leader_wait_time']:
+                for comm_member in leader.return_online_committee_members():
+                    comm_member_link_speed = comm_member.return_link_speed()
+                    lower_link_speed = leader.return_link_speed() if \
+                        leader.return_link_speed() < comm_member_link_speed else comm_member_link_speed
+                    if comm_member.online_switcher():
+                        aggregation_spent_time = comm_member.return_aggregation_time()
+                        centroids, feedback, idx = comm_member.return_aggregate_and_feedback()
+                        aggregate_and_feedback_size = getsizeof([centroids, feedback, idx])
+                        transmission_delay = aggregate_and_feedback_size / lower_link_speed
+                        aggr_and_feedback_total_time = aggregation_spent_time + transmission_delay
+                        # finally, obtain the aggregate and associated feedback.
+                        if aggr_and_feedback_total_time < leader.return_aggr_wait_time():
+                            if leader.online_switcher():
+                                leader.obtain_aggr_and_feedback(centroids, feedback, idx)
+            else:
+                for comm_member in leader.return_online_committee_members():
+                    comm_member_link_speed = comm_member.return_link_speed()
+                    lower_link_speed = leader.return_link_speed() if \
+                        leader.return_link_speed() < comm_member_link_speed else comm_member_link_speed
+                    if comm_member.online_switcher():
+                        aggregation_spent_time = comm_member.return_aggregation_time()
+                        centroids, feedback, idx = comm_member.return_aggregate_and_feedback()
+                        aggregate_and_feedback_size = getsizeof([centroids, feedback, idx])
+                        transmission_delay = aggregate_and_feedback_size / lower_link_speed
+                        aggr_and_feedback_total_time = aggregation_spent_time + transmission_delay
+                        # finally, obtain the aggregate and associated feedback.
+                        if leader.online_switcher():
+                            leader.obtain_aggr_and_feedback(centroids, feedback, idx)
 
-            # v. leaders build candidate blocks using the obtained centroids and send it to committee members for
-            # approval.
+            # v. leaders build candidate blocks using the obtained centroids and send it to committee members
+            # for approval.
             proposed_g_centroids = leader.compute_update()
             block = leader.build_block(proposed_g_centroids)
+            # after compute_update() and build_block(), both global_update_time and proposal_time are set.
             block.set_signature(leader.sign(block))  # after building the block, leaders sign it.
             if args['verbose']:
                 print(str(block))
 
-            # ToDo: consider link speeds here (and with it, the arrival time of candidate blocks at the committee).
-            leader.broadcast_block(block)  # block is added to each online committee member's candidate blocks.
+            if args['committee_member_block_wait_time']:
+                for comm_member in leader.return_online_committee_members():
+                    comm_member_link_speed = comm_member.return_link_speed()
+                    lower_link_speed = leader.return_link_speed() if \
+                        leader.return_link_speed() < comm_member_link_speed else comm_member_link_speed
+                    if leader.online_switcher():
+                        block, block_time = leader.broadcast_block()
+                        block_size = getsizeof(block)
+                        transmission_delay = block_size / lower_link_speed
+                        total_block_time = block_time + transmission_delay
+                        if total_block_time < comm_member.return_block_wait_time():
+                            if comm_member.online_switcher():
+                                comm_member.add_to_candidate_blocks(block, total_block_time)
+                                if total_block_time not in block_arrival_queue:
+                                    block_arrival_queue[total_block_time] = [block, [comm_member.return_idx()]]
+                                else:
+                                    block_arrival_queue[total_block_time][-1].append(comm_member.return_idx())
+            else:
+                for comm_member in leader.return_online_committee_members():
+                    comm_member_link_speed = comm_member.return_link_speed()
+                    lower_link_speed = leader.return_link_speed() if \
+                        leader.return_link_speed() < comm_member_link_speed else comm_member_link_speed
+                    if leader.online_switcher():
+                        block, block_time = leader.broadcast_block()
+                        block_size = getsizeof(block)
+                        transmission_delay = block_size / lower_link_speed
+                        total_block_time = block_time + transmission_delay
+                        if comm_member.online_switcher():
+                            comm_member.add_to_candidate_blocks(block, total_block_time)
+                            if total_block_time not in block_arrival_queue:
+                                block_arrival_queue[total_block_time] = [block, [comm_member.return_idx()]]
+                            else:
+                                block_arrival_queue[total_block_time][-1].append(comm_member.return_idx())
+
+        # in-between step: determine order in which to deal with candidate blocks.
+        block_arrival_queue = dict(sorted(block_arrival_queue.items()))
 
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
         winning_block = False
         winner = None
-        # N.B. should loop through candidate blocks based on their arrival time at committee members,
-        # not loop through committee members then through their candidate blocks.
-        # ToDo: consider arrival time of candidate blocks at committee here (related to link speeds).
-        for comm_member in committee_members_this_round:
-            # assert len(comm_member.candidate_blocks) > 0, "Committee member did not retrieve any proposed blocks."
-            print(str(comm_member.return_idx()) + " is now checking their candidate blocks.")
-            print(str(len(comm_member.candidate_blocks)) + " blocks retrieved.")
-            # ToDo: put online_switcher(), committee member may go offline while handling their candidate blocks.
-            for candidate_block in comm_member.candidate_blocks:
-                # check whether the signature on the block is valid, ignore the block otherwise.
-                if comm_member.verify_signature(candidate_block):
-                    print(f"Candidate block from {candidate_block.get_produced_by()} "
-                          f"has been verified by {comm_member.return_idx()}")
-                    centroids_to_check = candidate_block.get_data()['centroids']
-                    print("Using the newly proposed global centroids from the candidate block, an average "
-                          "silhouette score of " + str(comm_member.validate_update(centroids_to_check)) +
-                          " was found.")
-                    # Determine whether the block should be voted for or not.
-                    vote = comm_member.approve_block(candidate_block)
-                    # ToDo: consider link speeds here, and with it the arrival order of votes at leaders.
-                    # N.B. likely requires an extra loop through the votes by arrival order,
-                    # as the arrival order of votes is related to which block receives a majority vote first.
-                    if vote:
-                        leader_idx = candidate_block.get_produced_by()
-                        print(f"Voted for {leader_idx}'s block")
-                        comm_member.send_vote(vote, leader_idx)  # send vote to corresponding leader.
+        votes = []
+        # Voting stage!
+        for arrival_time, block_comm_pairs in block_arrival_queue.items():
+            # block_comm_pairs is a pair, containing the block and the idxs of the committee members that retrieved
+            # it at that time.
+            candidate_block = block_comm_pairs[0]
+            for comm_member_idx in block_comm_pairs[-1]:
+                for comm_member in committee_members_this_round:
+                    if comm_member.return_idx() == comm_member_idx:
+                        if comm_member.online_switcher():
+                            if comm_member.verify_signature(candidate_block):
+                                print(f"Candidate block from {candidate_block.get_produced_by()} "
+                                      f"has been verified by {comm_member.return_idx()}")
+                                centroids_to_check = candidate_block.get_data()['centroids']
+                                print("Using the newly proposed global centroids from the candidate block, "
+                                      "an average ""silhouette score of " +
+                                      str(comm_member.validate_update(centroids_to_check)) + " was found.")
+                                vote = comm_member.approve_block(candidate_block)
+                                if vote:
+                                    leader_idx = candidate_block.get_produced_by()
+                                    print(f"Voted for {leader_idx}'s block")
+                                    votes.append([vote, comm_member.return_idx(), leader_idx])
+                            else:
+                                print("Candidate block could not be verified. \n"
+                                      "Block originates from device having idx: " +
+                                      str(candidate_block.get_produced_by()))
 
-                        # after casting the vote, check whether the number of votes exceeds a majority.
-                        for leader in leaders_this_round:
-                            if leader.return_idx() == leader_idx:
-                                if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
-                                    winning_block = True
-                                    winner = leader
-                                    winner.serialize_votes()  # serialize votes and add result to the proposed block.
-                                    print(f"{leader_idx} has received a majority vote for their block.")
-                                    break
-
-                else:
-                    print("Candidate block could not be verified. \n"
-                          "Block originates from device having idx: " + str(candidate_block.get_produced_by()))
-            if winning_block:  # statement may be unnecessary or never reached, included anyway.
-                break
+        # Counting stage!
+        # A vote is a pair [0] contains the message, [1] contains the committee idx, [2] contains the leader idx.
+        winning_block = False
+        winner = None
+        for vote in votes:
+            while not winning_block:
+                msg = vote[0]
+                comm_member_idx = vote[1]
+                leader_idx = vote[2]
+                for comm_member in committee_members_this_round:
+                    if comm_member.return_idx() == comm_member_idx:
+                        comm_member.send_vote(msg, leader_idx)
+                for leader in leaders_this_round:
+                    if leader.return_idx() == leader_idx:
+                        if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
+                            winning_block = True
+                            winner = leader
+                            winner.serialize_votes()
+                            print(f"{leader_idx} was the first to receive a majority vote for their block.")
+                            break
 
         # vii. leader that obtained a majority vote append their block to their chain and propagate it to all
         # committee members. Afterward, committee members request their peers to download the winning block.
@@ -502,7 +603,7 @@ if __name__ == '__main__':
     for device in device_list:
         plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
     colors = ['purple', 'orange', 'cyan']
-    for i in range(len(track_g_centroids)-1):
+    for i in range(len(track_g_centroids) - 1):
         for j in range(len(track_g_centroids[0])):
             plt.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
 
