@@ -260,36 +260,49 @@ if __name__ == '__main__':
         random.shuffle(eligible_comm_keys)
         random.shuffle(eligible_leaders_keys)
 
-        # reset the device's role from previous round, then assign their new role.
+        # reset the device's role from previous round, assign previously drawn devices (from sampling) first.
         for device in device_list:
             device.reset_role()
             if device.return_idx() in chosen_catch_up:
-                if committee_members_to_assign:
+                if committee_members_to_assign > 0:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
 
             elif device.return_idx() in eligible_leaders_keys:
-                if leaders_to_assign:
+                if leaders_to_assign > 0:
                     device.assign_leader_role()
                     leaders_to_assign -= 1
             elif device.return_idx() in eligible_comm_keys:
-                if committee_members_to_assign:
+                if committee_members_to_assign > 0:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
 
-            # Check whether the remaining devices have high enough contribution to be selected as data owner.
+            # Ensure that all leader and committee member roles that were required are assigned.
+            elif leaders_to_assign or committee_members_to_assign:
+                if committee_members_to_assign > 0:
+                    device.assign_committee_role()
+                    committee_members_to_assign -= 1
+                if leaders_to_assign > 0:
+                    device.assign_leader_role()
+                    leaders_to_assign -= 1
+
+            # Done assigning committee members and leaders, adding them to their respective lists.
+            if device.return_role() == "leader":
+                leaders_this_round.append(device)
+            if device.return_role() == "committee":
+                committee_members_this_round.append(device)
+
             # ToDo: determine a value for the contribution less than 0.0 that is sensible to exclude devices for.
-            elif data_owners_to_assign and contr_vals[device.return_idx()] >= -.2:
+            # Check whether the remaining devices have high enough contribution to be selected as data owner.
+            # N.B. They should not already have a role assigned.
+            elif data_owners_to_assign > 0 and device.return_role() not in ['leader', 'committee'] \
+                    and contr_vals[device.return_idx()] >= -.2:
                 device.assign_data_role()
                 data_owners_to_assign -= 1
 
-            # Add all devices to a list of their respective roles.
+            # Add data owners to the list of data owners.
             if device.return_role() == "data owner":
                 data_owners_this_round.append(device)
-            elif device.return_role() == "leader":
-                leaders_this_round.append(device)
-            elif device.return_role() == "committee":
-                committee_members_this_round.append(device)
 
         # ToDo: print more useful statistics here for debugging at start of round.
         if args['verbose']:
@@ -309,8 +322,8 @@ if __name__ == '__main__':
         for device in data_owners_this_round:
             # local_centroids, local_update_time = device.local_update()
             device.local_update()
-            local_centroids = device.retrieve_local_centroids()
             if args['verbose']:
+                local_centroids = device.retrieve_local_centroids()
                 print(local_centroids)
 
             # Send the result to a committee member in the device's peer list.
@@ -489,9 +502,13 @@ if __name__ == '__main__':
     for device in device_list:
         plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
     colors = ['purple', 'orange', 'cyan']
-    for i in range(len(track_g_centroids)):
+    for i in range(len(track_g_centroids)-1):
         for j in range(len(track_g_centroids[0])):
             plt.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
+
+    # Plot the last centroids separately.
+    for i in range(len(track_g_centroids[-1])):
+        plt.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color='k', s=100)
     plt.show()
 
     print(f"Total number of communication rounds: {total_comm_rounds}.")
