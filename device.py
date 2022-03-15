@@ -4,6 +4,7 @@ import datetime as dt
 import random
 import copy
 import pickle
+from sys import getsizeof
 
 from hashlib import sha256
 from Crypto.PublicKey import RSA
@@ -59,7 +60,7 @@ class Device:
         if equal_computation_power:
             self.computation_power = 1
         else:
-            self.computation_power = random.randint(1, 4)
+            self.computation_power = random.uniform(0.1, 4)
 
         # General parameters, not role-specific.
         self.role = None
@@ -76,7 +77,7 @@ class Device:
         # Data owners
         self.local_epochs = local_epochs
         self.performance_this_round = float('-inf')
-        self.local_update_time = None
+        self.local_update_time = 0
         self.local_total_epoch = 0
         self.local_centroids = []
 
@@ -94,8 +95,8 @@ class Device:
         self.committee_threshold = committee_threshold
         self.contribution_lag = contribution_lag
         self.fed_avg = fed_avg
-        self.committee_validation_time = None
-        self.committee_aggregation_time = None
+        self.committee_validation_time = 0
+        self.committee_aggregation_time = 0
         self.candidate_blocks = []
         self.candidate_blocks_unordered = {}  # necessary for simulation, not reflective of real distributed system.
         self.candidate_blocks_ordered = {}
@@ -111,8 +112,8 @@ class Device:
         self.new_centroids = []
         self.deltas = []  # Euclidean distances between previous centroids and new centroids.
         self.proposed_block = None
-        self.global_update_time = None
-        self.proposal_time = None
+        self.global_update_time = 0
+        self.proposal_time = 0
         self.received_votes = []
         self.stop_check = False
         # ToDo: determine the arrival order of votes, as the first block to receive a majority vote should be appended.
@@ -301,7 +302,6 @@ class Device:
             return True
 
     # describes how to sync after reconnecting or failed validity check
-    # ToDo: figure out if there are any other locations than online_switcher() where this function should be called.
     def resync_chain(self):
         longest_chain = None
         updated_from_peer = None
@@ -406,7 +406,7 @@ class Device:
     # Used to reset variables at the start of a communication round (round-specific variables) for data owners
     def reset_vars_data_owner(self):
         self.performance_this_round = float('-inf')
-        self.local_update_time = None
+        self.local_update_time = 0
 
     ''' committee member '''
 
@@ -606,7 +606,8 @@ class Device:
         return msg
 
     # accept the propagated block --> append it to our blockchain.
-    def accept_propagated_block(self, propagated_block, source_idx):
+    # ToDo: decide whether to check that the sender_idx corresponds to a leader.
+    def accept_propagated_block(self, propagated_block, sender_idx):
         if propagated_block.get_hash() != self.obtain_latest_block().get_hash():
             self.append_block(propagated_block)
         else:
@@ -614,15 +615,21 @@ class Device:
 
     # Send a request to peers to download the propagated (and accepted) block from leader.
     def request_to_download(self, block_to_download):
+        broadcast_delay = 0
+        block_to_download_size = getsizeof(block_to_download)
         for peer in self.peer_list:
-            if peer.is_online() and self.is_online():
+            if peer.online_switcher() and self.is_online():
                 # check whether the block is valid and has not already been added to the chain for current peer.
                 if peer.verify_block(block_to_download) and \
                         peer.obtain_latest_block().get_hash() != block_to_download.get_hash():
+                    lower_link_speed = self.link_speed if self.link_speed < peer.return_link_speed() \
+                        else peer.return_link_speed()
+                    broadcast_delay += block_to_download_size / lower_link_speed
                     peer.append_block(block_to_download)
             else:
                 print(f"Either {peer.return_idx()} or {self.return_idx()} is currently offline or the block was "
-                      f"already added to {peer.return_idx()}'s chain and thus the block could not be downloaded.")
+                      f"already added to {peer.return_idx()}'s chain.")
+        return broadcast_delay
 
     # Sends the vote to the leader device.
     def send_vote(self, vote, device_idx):
@@ -641,8 +648,8 @@ class Device:
     def reset_vars_committee_member(self):
         self.associated_data_owners_set = set()
         self.feedback_dicts = {}
-        self.committee_validation_time = None
-        self.committee_aggregation_time = None
+        self.committee_validation_time = 0
+        self.committee_aggregation_time = 0
         self.obtained_local_centroids = []
         self.obtained_updates_unordered = {}
         self.updated_centroids = []
@@ -664,8 +671,11 @@ class Device:
         print(f"Obtained centroids have shape: {obtained_centroids.shape}")
         updated_g_centroids = []
         # Compute aggregates.
-        for i in range(len(obtained_centroids[0])):
-            updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
+        if len(obtained_centroids) > 0:
+            for i in range(len(obtained_centroids[0])):
+                updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
+        else:  # ToDo: placeholder for now, likely not what we want to happen.
+            return np.zeros(g_centroids.shape)
 
         # compute new global centroids (simple update step).
         new_g_centroids = []
@@ -701,12 +711,16 @@ class Device:
 
     # Build a candidate block from the newly produced global centroids, computed contribution scores and provide
     # feedback on committee members by updating their reputation.
-    def build_block(self, new_g_centroids):
+    def build_block(self, new_g_centroids, re_init=False):
         block_proposal_time = time.time()
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
-        data['contribution'] = self.update_contribution_final()
+        if re_init:
+            device_idxs = self.obtain_latest_block().get_data()['contribution'].keys()
+            data['contribution'] = dict.fromkeys(device_idxs, 0)
+        else:
+            data['contribution'] = self.update_contribution_final()
         data['pos_reputation'], data['neg_reputation'] = self.update_reputation()
         block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
@@ -716,12 +730,15 @@ class Device:
         self.proposal_time = block_proposal_time
         return block
 
+    def return_proposed_block(self):
+        return self.proposed_block
+
     # ToDo: write function, including bypassing of regular global update computation and reputation system.
     def build_malicious_block(self, new_g_centroids):
         assert self.is_malicious, "Attempted to build a malicious block on a device that is not malicious."
         pass
 
-    # Add the proposed block from leader to the committee members' candidate blocks.
+    # Return the proposed block, if there is any, along with the time it took to build it.
     def broadcast_block(self):
         return self.proposed_block, self.global_update_time + self.proposal_time
 
@@ -738,9 +755,16 @@ class Device:
 
     # Propagate the proposed block (received majority vote) to all committee members.
     def propagate_block(self, block_to_propagate):
+        total_transmission_delay = 0
+        propagated_block_size = getsizeof(block_to_propagate)
         committee = self.return_online_committee_members()
         for member in committee:
-            member.accept_propagated_block(block_to_propagate, self.return_idx())
+            if member.online_switcher():
+                lower_link_speed = self.link_speed if self.link_speed < member.return_link_speed() \
+                    else member.return_link_speed()
+                total_transmission_delay += propagated_block_size / lower_link_speed
+                member.accept_propagated_block(block_to_propagate, self.return_idx())
+        return total_transmission_delay
 
     def return_online_committee_members(self):
         online_committee_members = set()
@@ -832,8 +856,8 @@ class Device:
         self.feedback_dicts = []
         self.new_centroids = []
         self.proposed_block = None
-        self.proposal_time = None
-        self.global_update_time = None
+        self.proposal_time = 0
+        self.global_update_time = 0
         self.received_votes = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}

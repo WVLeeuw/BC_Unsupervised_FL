@@ -49,6 +49,10 @@ parser.add_argument('-gul', '--global_update_lag', type=float, default=.5,
                     help='parameter representing the lag of global model updates. Possible values between 0.0 and 1.0,'
                          'where a higher value represents more lag which in turn translates to new model updates '
                          'having less effect on the model update.')
+parser.add_argument('-ninit', '--num_reinitialize', type=int, default=10,
+                    help='parameter representing how often the global learning process may reset if it deems the '
+                         'initial centroid positions to be poor (and thus decides that proper convergence is '
+                         'unlikely).')
 
 # Additional BC attributes (to make entire process more efficient)
 parser.add_argument('-cmut', '--committee_member_update_wait_time', type=float, default=0.0,
@@ -237,7 +241,7 @@ if __name__ == '__main__':
             pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
             if pos_count == neg_count == 1:  # ToDo: check whether this is the only condition to be chosen to catch up.
                 # assign committee role with 10% probability.
-                if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 4:
+                if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
                     chosen_catch_up.append(device.return_idx())
 
             # check whether the device was a committee member in the previous round, not eligible otherwise.
@@ -265,27 +269,18 @@ if __name__ == '__main__':
         for device in device_list:
             device.reset_role()
             if device.return_idx() in chosen_catch_up:
-                if committee_members_to_assign > 0:
+                if committee_members_to_assign:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
 
             elif device.return_idx() in eligible_leaders_keys:
-                if leaders_to_assign > 0:
+                if leaders_to_assign:
                     device.assign_leader_role()
                     leaders_to_assign -= 1
             elif device.return_idx() in eligible_comm_keys:
-                if committee_members_to_assign > 0:
+                if committee_members_to_assign:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
-
-            # Ensure that all leader and committee member roles that were required are assigned.
-            elif leaders_to_assign or committee_members_to_assign:
-                if committee_members_to_assign > 0:
-                    device.assign_committee_role()
-                    committee_members_to_assign -= 1
-                if leaders_to_assign > 0:
-                    device.assign_leader_role()
-                    leaders_to_assign -= 1
 
             # Done assigning committee members and leaders, adding them to their respective lists.
             if device.return_role() == "leader":
@@ -368,7 +363,8 @@ if __name__ == '__main__':
                             if comm_member.online_switcher():
                                 comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
                     else:
-                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update.")
+                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
+                              f"offline.")
             else:
                 for data_owner in comm_member.return_online_associated_data_owners():
                     data_owner_link_speed = data_owner.return_link_speed()
@@ -384,7 +380,8 @@ if __name__ == '__main__':
                         if comm_member.online_switcher():
                             comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
                     else:
-                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update.")
+                        print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
+                              f"offline.")
 
             # validate local updates and aggregate usable local updates
             if comm_member.online_switcher():
@@ -439,8 +436,6 @@ if __name__ == '__main__':
             # for approval.
             proposed_g_centroids = leader.compute_update()
             block = leader.build_block(proposed_g_centroids)
-            # after compute_update() and build_block(), both global_update_time and proposal_time are set.
-            block.set_signature(leader.sign(block))  # after building the block, leaders sign it.
             if args['verbose']:
                 print(str(block))
 
@@ -484,7 +479,7 @@ if __name__ == '__main__':
         # vi. committee members vote on candidate blocks by sending their vote to all committee members (signed)
         winning_block = False
         winner = None
-        votes = []
+        votes = {}
         # Voting stage!
         for arrival_time, block_comm_pairs in block_arrival_queue.items():
             # block_comm_pairs is a pair, containing the block and the idxs of the committee members that retrieved
@@ -502,89 +497,146 @@ if __name__ == '__main__':
                                       "an average ""silhouette score of " +
                                       str(comm_member.validate_update(centroids_to_check)) + " was found.")
                                 vote = comm_member.approve_block(candidate_block)
+                                time_to_vote = comm_member.return_validation_time()
                                 if vote:
                                     leader_idx = candidate_block.get_produced_by()
-                                    print(f"Voted for {leader_idx}'s block")
-                                    votes.append([vote, comm_member.return_idx(), leader_idx])
+                                    votes[time_to_vote] = [vote, comm_member.return_idx(), leader_idx]
                             else:
                                 print("Candidate block could not be verified. \n"
                                       "Block originates from device having idx: " +
                                       str(candidate_block.get_produced_by()))
 
+        # in-between step: determine order in which the votes would finally arrive.
+        final_vote_order = {}
+        for vote_time, vote in votes.items():
+            vote_size = getsizeof(vote[0])
+            comm_member_idx = vote[1]
+            leader_idx = vote[2]
+            for comm_member in committee_members_this_round:
+                if comm_member.return_idx() == comm_member_idx:
+                    comm_member_link_speed = comm_member.return_link_speed()
+                    for leader in leaders_this_round:
+                        if leader.return_idx() == leader_idx:
+                            leader_link_speed = leader.return_link_speed()
+                            lower_link_speed = leader_link_speed if leader_link_speed < comm_member_link_speed \
+                                else comm_member_link_speed
+                            transmission_delay = vote_size / lower_link_speed
+                            final_vote_order[transmission_delay + vote_time] = vote
+        final_vote_order = dict(sorted(final_vote_order.items()))
+
         # Counting stage!
         # A vote is a pair [0] contains the message, [1] contains the committee idx, [2] contains the leader idx.
         winning_block = False
         winner = None
-        for vote in votes:
-            while not winning_block:
-                msg = vote[0]
-                comm_member_idx = vote[1]
-                leader_idx = vote[2]
-                for comm_member in committee_members_this_round:
-                    if comm_member.return_idx() == comm_member_idx:
-                        comm_member.send_vote(msg, leader_idx)
-                for leader in leaders_this_round:
-                    if leader.return_idx() == leader_idx:
-                        if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
-                            winning_block = True
-                            winner = leader
-                            winner.serialize_votes()
-                            print(f"{leader_idx} was the first to receive a majority vote for their block.")
-                            break
+        for vote_time, vote in final_vote_order.items():
+            msg = vote[0]
+            comm_member_idx = vote[1]
+            leader_idx = vote[2]
+            if winning_block:  # check whether we already found a winner.
+                break
+            for comm_member in committee_members_this_round:
+                if comm_member.return_idx() == comm_member_idx:
+                    comm_member.send_vote(msg, leader_idx)
+                    print(f"{comm_member.return_idx()} voted for {leader_idx}'s block")
+                    # Find the leader that just obtained the vote.
+                    for leader in leaders_this_round:
+                        if leader.return_idx() == leader_idx:
+                            if len(leader.return_received_votes()) > len(committee_members_this_round) // 2:
+                                winning_block = True
+                                winner = leader
+                                winner.serialize_votes()
+                                print(f"{leader_idx} was the first to receive a majority vote for their block.")
+                                break
 
         # vii. leader that obtained a majority vote append their block to their chain and propagate it to all
         # committee members. Afterward, committee members request their peers to download the winning block.
         if winning_block:
             # check whether there is a centroid which was not updated.
-            if any(delta == 0 for delta in winner.return_deltas()):
+            if any(winner.return_deltas()) == 0.0 and num_reinitialized < args['num_reinitialize']:
                 print("We should re-initialize the centroids because at least one centroid was not updated.")
-                # Produce a new genesis block.
-                data = dict()
                 init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
                 centroids = init_centroids
-                bc = Blockchain()
-                bc.create_genesis_block(device_idxs=idxs, centroids=centroids)
+                new_init_block = winner.build_block(centroids, re_init=True)
+                winner.add_block(new_init_block)
+                total_propagation_delay = winner.propagate_block(new_init_block)
                 track_g_centroids = [init_centroids]
+                total_broadcast_delay = 0
+                for comm_member in committee_members_this_round:
+                    if comm_member.online_switcher():
+                        total_broadcast_delay += comm_member.request_to_download(new_init_block)
                 for device in device_list:
-                    # feed the created blockchain with genesis block to each device.
-                    device.blockchain = copy.copy(bc)
+                    # have each device reinitialize their kmeans model after reinitialization of centroids.
                     device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
                 num_reinitialized += 1
                 comm_round = 0  # finally, reset communication round to 0.
-            elif winner.request_final_block_verification():
-                winner.add_block(winner.proposed_block)
-                # ToDo: consider link speeds here.
-                winner.propagate_block(winner.proposed_block)
-                # select a committee member to request others to download the block after appendage.
-                # ToDo: consider link speeds here.
-                committee_members_this_round[-1].request_to_download(winner.proposed_block)
                 if args['verbose']:
                     for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
                         print(str(block))
+                    print(
+                        f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
+                        f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
+                        f"to communicate the winning block with their peers.")
+                break
+            elif winner.request_final_block_verification():
+                winner.add_block(winner.return_proposed_block())
+                total_propagation_delay = winner.propagate_block(winner.return_proposed_block())
+                # select a random committee member to request others to download the block after appendage.
+                random.shuffle(committee_members_this_round)
+                total_broadcast_delay = 0
+                for comm_member in committee_members_this_round:
+                    if comm_member.online_switcher():
+                        total_broadcast_delay += comm_member.request_to_download(winner.return_proposed_block())
+                if args['verbose']:
+                    for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
+                        print(str(block))
+                    print(f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
+                          f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
+                          f"to communicate the winning block with their peers.")
                 track_g_centroids.append(winner.retrieve_global_centroids())
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
                     comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
                     # ToDo: ask whether this suffices for the simulation, or whether stop requests should be handled.
         else:
+            # check whether it holds for all leaders that any(leader.return_deltas()) == 0.0, then reinit.
+            deltas_list = []
             for leader in leaders_this_round:
-                # Code repetition for now. Can we write this into a function (i.e. def reinitialize())?
-                # check whether there is a centroid which was not updated.
-                if any(leader.return_deltas()) == 0.0:
-                    print("We should re-initialize the centroids because at least one centroid was not updated.")
-                    # Produce a new genesis block.
-                    data = dict()
-                    init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
-                    centroids = init_centroids
-                    bc = Blockchain()
-                    bc.create_genesis_block(device_idxs=idxs, centroids=centroids)
-                    track_g_centroids = [init_centroids]
-                    for device in device_list:
-                        # feed the created blockchain with genesis block to each device.
-                        device.blockchain = copy.copy(bc)
-                        device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
-                    num_reinitialized += 1
-                    comm_round = 0  # finally, reset communication round to 0.
+                deltas_list.append(leader.return_deltas())
+            reinit = []
+            for deltas in deltas_list:
+                if any([delta == 0.0 for delta in deltas]):
+                    reinit.append(True)
+                else:
+                    reinit.append(False)
+
+            # if all leaders received no updates for a certain centroid, reinitialize.
+            if all(reinit) and num_reinitialized < args['num_reinitialize']:
+                print("We should re-initialize the centroids because at least one centroid was not updated.")
+                init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
+                centroids = init_centroids
+                # randomly pick a leader to perform the reinitialization.
+                random.shuffle(leaders_this_round)
+                chosen_leader = leaders_this_round[-1]
+                new_init_block = chosen_leader.build_block(centroids, re_init=True)
+                chosen_leader.add_block(new_init_block)
+                total_propagation_delay = chosen_leader.propagate_block(new_init_block)
+                track_g_centroids = [init_centroids]
+                total_broadcast_delay = 0
+                for comm_member in committee_members_this_round:
+                    if comm_member.online_switcher():
+                        total_broadcast_delay += comm_member.request_to_download(new_init_block)
+                for device in device_list:
+                    # have each device reinitialize their kmeans model after reinitialization of centroids.
+                    device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
+                num_reinitialized += 1
+                comm_round = 0  # finally, reset communication round to 0.
+                if args['verbose']:
+                    for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
+                        print(str(block))
+                    print(
+                        f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
+                        f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
+                        f"to communicate the winning block with their peers.")
             num_rounds_no_winner += 1
 
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
