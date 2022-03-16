@@ -198,7 +198,7 @@ if __name__ == '__main__':
         device.remove_peers(device)
 
     # 7. build log files, to be filled during execution
-    open(f"{log_folder_path}/hello_world.txt", 'w').close()  # ToDo: change .txt name. Actually fil it during exe.
+    open(f"{log_folder_path}/hello_world.txt", 'w').close()  # ToDo: change .txt name. Actually fill it during exe.
 
     # 8. run elbow method to make a sensible choice for global k.
     k_choices = []
@@ -319,10 +319,10 @@ if __name__ == '__main__':
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
-            device.local_update()
-            if args['verbose']:
-                local_centroids = device.retrieve_local_centroids()
-                print(local_centroids)
+            if device.return_is_malicious():
+                device.malicious_local_update()
+            else:
+                device.local_update()
 
             # Send the result to a committee member in the device's peer list.
             # Depending on the closeness of connections, put the data owner either in every committee member's
@@ -341,7 +341,6 @@ if __name__ == '__main__':
                 eligible_comm_members[0].add_device_to_associated_set(device)
 
         # iii. committee members validate retrieved updates and aggregate viable results
-        aggregated_local_centroids = []
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             if args['committee_member_update_wait_time']:
@@ -385,6 +384,8 @@ if __name__ == '__main__':
 
             # validate local updates and aggregate usable local updates
             if comm_member.online_switcher():
+                if comm_member.return_is_malicious():
+                    aggr_centroids = comm_member.malicious_aggr_updates()
                 if comm_member.return_fed_avg():
                     aggr_centroids = comm_member.aggr_fed_avg()
                 else:
@@ -397,7 +398,6 @@ if __name__ == '__main__':
                     print(str(comm_member.validate_update(aggr_centroids)) +
                           " compared to previous global model performance of " +
                           str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
-                aggregated_local_centroids.append(aggr_centroids)  # not used anymore.
 
         # iv. committee members send updated centroids to every leader
         block_arrival_queue = {}
@@ -434,8 +434,12 @@ if __name__ == '__main__':
 
             # v. leaders build candidate blocks using the obtained centroids and send it to committee members
             # for approval.
-            proposed_g_centroids = leader.compute_update()
-            block = leader.build_block(proposed_g_centroids)
+            if leader.return_is_malicious():
+                proposed_g_centroids = leader.malicious_compute_update()
+                block = leader.malicious_build_block(proposed_g_centroids)
+            else:
+                proposed_g_centroids = leader.compute_update()
+                block = leader.build_block(proposed_g_centroids)
             if args['verbose']:
                 print(str(block))
 

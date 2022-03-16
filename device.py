@@ -116,9 +116,6 @@ class Device:
         self.proposal_time = 0
         self.received_votes = []
         self.stop_check = False
-        # ToDo: determine the arrival order of votes, as the first block to receive a majority vote should be appended.
-        # self.obtained_votes_unordered = {}
-        # self.obtained_votes_arrival_order_queue = {}
 
         # For malicious devices
         self.variance_of_noise = None or []
@@ -179,7 +176,7 @@ class Device:
     def is_online(self):
         return self.online
 
-    # To check whether a malicious not is correctly excluded (i.e. poor contribution and/or reputation).
+    # To check whether a malicious device is correctly excluded (i.e. poor contribution and/or reputation).
     def return_is_malicious(self):
         return self.is_malicious
 
@@ -370,12 +367,16 @@ class Device:
     def return_local_update_time(self):
         return self.local_update_time
 
-    # ToDo: write function and consider local computation power here.
     def malicious_local_update(self):
         assert self.is_malicious, "Attempted to provide a malicious local update on a device that is not malicious."
-        # N.B. We can add noise or supply garbage updates (based on global centroids). If we do want to add noise,
-        # should use random with a given range (self.variance_of_noise).
-        pass
+        start_time = time.time()
+        min_vals, max_vals = data_utils.obtain_bounds(self.dataset)
+        bounds = []
+        for i in range(len(min_vals)):  # N.B. len(min_vals) should be equal to n_dims every single time.
+            bounds.append([min_vals[i], max_vals[i]])
+        # Supply garbage updates by randomly producing 'local' centroids.
+        self.local_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims=len(bounds), repeats=self.elbow)
+        self.local_update_time = (time.time() - start_time) / self.computation_power
 
     def retrieve_local_centroids(self):
         return self.local_centroids
@@ -434,11 +435,6 @@ class Device:
 
     def return_validation_time(self):
         return self.committee_validation_time
-
-    # ToDo: write function and do local computation power here.
-    def malicious_update_validation(self, local_centroids):
-        assert self.is_malicious, "Attempted to provide a malicious validation on a device that is not malicious."
-        pass
 
     # find the nearest global centroid given a centroid position.
     def find_nearest_global_centroid(self, centroid):
@@ -534,10 +530,22 @@ class Device:
     def return_aggregation_time(self):
         return self.committee_aggregation_time
 
-    # ToDo: write function and consider local computation power here.
-    def malicious_aggr_updates(self, updates_per_centroid):
+    def malicious_aggr_updates(self):
         assert self.is_malicious, "Attempted to compute aggregates maliciously on a device that is not malicious."
-        pass
+        start_time = time.time()
+        # local_updates_obtained = [local_update_tuple[0] for local_update_tuple in self.centroids_idxs_records]
+
+        # ToDo: determine whether it suffices to have the same behavior as malicious_local_update here.
+        min_vals, max_vals = data_utils.obtain_bounds(self.dataset)
+        bounds = []
+        for i in range(len(min_vals)):  # N.B. len(min_vals) should be equal to n_dims every single time.
+            bounds.append([min_vals[i], max_vals[i]])
+        # Supply garbage updates by randomly producing 'local' centroids.
+        self.updated_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims=len(bounds), repeats=self.elbow)
+
+        aggregation_time = (time.time() - start_time) / self.computation_power
+        self.committee_aggregation_time = aggregation_time
+        return self.updated_centroids
 
     # Obtain a factor based on the no. records compared to the average no. records per data owner.
     def _obtain_scaling_factor(self, datasize, totalsize, nr_data_owners):
@@ -580,9 +588,7 @@ class Device:
 
     # ToDo: figure out whether to verify more block characteristics or just signature.
     def verify_block(self, block):
-        verification_time = time.time()
         if self.verify_signature(block):
-            verification_time = (time.time() - verification_time) / self.computation_power
             return True
         else:
             return False
@@ -597,18 +603,59 @@ class Device:
         return self.candidate_blocks_ordered
 
     # approve block effectively produces a vote for said block.
+    # ToDo: test approve_block on blocks that are clearly illegal (reputation and contribution values).
     def approve_block(self, block):
         msg = None
+        recent_block_data = self.obtain_latest_block().get_data()
+
+        rep_check = True
+        old_pos_rep, old_neg_rep = recent_block_data['pos_reputation'], recent_block_data['neg_reputation']
+        # check if, for any device, we encounter illegal reputation values.
+        for device_idx_o, rep_val_o in old_neg_rep.items():
+            for device_idx_n, rep_val_n in block.get_data()['neg_reputation'].items():
+                if device_idx_o == device_idx_n:
+                    if not rep_val_o - 2 < rep_val_n < rep_val_o + 2:
+                        rep_check = False
+        if rep_check:  # also check positive reputation values if we have not found any illegal values yet.
+            for device_idx_o, rep_val_o in old_pos_rep.items():
+                for device_idx_n, rep_val_n in block.get_data()['pos_reputation'].items():
+                    if device_idx_o == device_idx_n:
+                        if not rep_val_o - 2 < rep_val_n < rep_val_o + 2:
+                            rep_check = False
+
+        contr_check = True
+        old_contribution = recent_block_data['contribution']
+        # check if, for any device, we encounter illegal contribution values.
+        for device_idx_o, contr_val_o in old_contribution.items():
+            for device_idx_n, contr_val_n in block.get_data()['contribution'].items():
+                if device_idx_o == device_idx_n:
+                    # ToDo: figure out whether this is as tight a bound as we can get on contribution.
+                    if abs(contr_val_n - contr_val_o) >= 2:
+                        contr_check = False
+
         # if the new block's centroids perform as well as or better than the previous block's centroids, we approve.
-        if self.validate_update(block.get_data()['centroids']) >= \
+        validate_res = self.validate_update(block.get_data()['centroids']) >= self.validate_update(
+            self.retrieve_global_centroids())
+
+        if validate_res and rep_check and contr_check:
+            msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key(), dt.datetime.now()]
+        return msg
+
+    def malicious_approve_block(self, block):
+        msg = None
+        # approve the block if it performs worse than the previous global centroids, for actual validation.
+        if self.validate_update(block.get_data()['centroids']) < \
                 self.validate_update(self.retrieve_global_centroids()):
             msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key(), dt.datetime.now()]
         return msg
 
     # accept the propagated block --> append it to our blockchain.
-    # ToDo: decide whether to check that the sender_idx corresponds to a leader.
     def accept_propagated_block(self, propagated_block, sender_idx):
-        if propagated_block.get_hash() != self.obtain_latest_block().get_hash():
+        sender_is_leader = False
+        for peer in self.peer_list:
+            if peer.return_idx() == sender_idx and peer.return_role == 'leader':
+                sender_is_leader = True
+        if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader:
             self.append_block(propagated_block)
         else:
             print(f"The block was already added to {self.return_idx()}'s chain.")
@@ -674,7 +721,7 @@ class Device:
         if len(obtained_centroids) > 0:
             for i in range(len(obtained_centroids[0])):
                 updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
-        else:  # ToDo: placeholder for now, likely not what we want to happen.
+        else:  # ToDo: placeholder for now, likely not what we want to happen. Just pass?
             return np.zeros(g_centroids.shape)
 
         # compute new global centroids (simple update step).
@@ -683,7 +730,7 @@ class Device:
                                                              "aggregated centroids. "
         for i in range(len(updated_g_centroids)):
             new_g_centroids.append(self.global_update_lag * g_centroids[i] +
-                                   (1-self.global_update_lag) * updated_g_centroids[i])
+                                   (1 - self.global_update_lag) * updated_g_centroids[i])
 
         deltas = []
         for i in range(len(g_centroids)):
@@ -699,10 +746,23 @@ class Device:
         self.global_update_time = global_update_computation_time
         return np.asarray(new_g_centroids)
 
-    # ToDo: write function and consider local computation power here, if applicable.
     def malicious_compute_update(self):
         assert self.is_malicious, "Attempted to compute a malicious global update on a device that is not malicious."
-        pass
+        start_time = time.time()
+        actual_update = self.compute_update()
+        prev_global_centroids = self.retrieve_global_centroids()
+        # Obtain the difference between the updated centroids and the global centroids.
+        diffs_per_centroid = []
+        for i in range(len(prev_global_centroids)):
+            diffs = []
+            for j in range(len(prev_global_centroids[0])):
+                diffs.append(actual_update[i][j] - prev_global_centroids[i][j])
+            diffs_per_centroid.append(diffs)
+        malicious_update = [glob_centroid - diff for glob_centroid, diff in
+                            zip(prev_global_centroids, diffs_per_centroid)]
+        global_update_computation_time = (time.time() - start_time) / self.computation_power
+        self.global_update_time = global_update_computation_time
+        return np.asarray(malicious_update)
 
     def obtain_aggr_and_feedback(self, aggregated_centroids, feedback, committee_idx):
         self.new_centroids.append(aggregated_centroids)
@@ -733,10 +793,23 @@ class Device:
     def return_proposed_block(self):
         return self.proposed_block
 
-    # ToDo: write function, including bypassing of regular global update computation and reputation system.
-    def build_malicious_block(self, new_g_centroids):
+    def malicious_build_block(self, new_g_centroids):
         assert self.is_malicious, "Attempted to build a malicious block on a device that is not malicious."
-        pass
+        block_proposal_time = time.time()
+        previous_hash = self.obtain_latest_block().get_hash()
+        recent_block_data = self.obtain_latest_block().get_data()
+        data = dict()
+        data['centroids'] = new_g_centroids
+        data['pos_reputation'] = recent_block_data['pos_reputation']  # simply copy previous reputation
+        data['neg_reputation'] = recent_block_data['neg_reputation']
+        data['contribution'] = recent_block_data['contribution']  # idem for contribution
+        block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
+                      miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
+        block.set_signature(self.sign(block))
+        self.proposed_block = block
+        block_proposal_time = (time.time() - block_proposal_time) / self.computation_power
+        self.proposal_time = block_proposal_time
+        return block
 
     # Return the proposed block, if there is any, along with the time it took to build it.
     def broadcast_block(self):
@@ -804,8 +877,6 @@ class Device:
 
     # checks for each committee member whether they successfully executed communication steps and if so,
     # assigns positive feedback. Negative otherwise.
-    # ToDo: decide whether to differentiate between having obtain both centroids AND
-    #  feedback or having just obtained centroids OR feedback.
     def update_reputation(self):
         committee_members_idxs = [peer.return_idx() for peer in self.peer_list if peer.return_role() == 'committee']
         updated_pos_reputation = copy.copy(self.obtain_latest_block().get_data()['pos_reputation'])
@@ -845,7 +916,7 @@ class Device:
         # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
         for device_idx in final_contr_comp.keys():
             if device_idx in final_contr:
-                final_contr[device_idx] = beta * final_contr_comp[device_idx] + (1-beta) * final_contr[device_idx]
+                final_contr[device_idx] = beta * final_contr_comp[device_idx] + (1 - beta) * final_contr[device_idx]
 
         contribution_update_time = (time.time() - contribution_update_time) / self.computation_power
         return final_contr
