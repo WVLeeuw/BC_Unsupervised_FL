@@ -635,7 +635,7 @@ class Device:
 
         # if the new block's centroids perform as well as or better than the previous block's centroids, we approve.
         validate_res = self.validate_update(block.get_data()['centroids']) >= self.validate_update(
-            self.retrieve_global_centroids())
+            self.retrieve_global_centroids()) + self.committee_threshold
 
         if validate_res and rep_check and contr_check:
             msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key(), dt.datetime.now()]
@@ -655,10 +655,25 @@ class Device:
         for peer in self.peer_list:
             if peer.return_idx() == sender_idx and peer.return_role == 'leader':
                 sender_is_leader = True
-        if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader:
-            self.append_block(propagated_block)
-        else:
-            print(f"The block was already added to {self.return_idx()}'s chain.")
+
+        # If it is not a genesis block or a re-init block.
+        if propagated_block.get_vote_serial():
+            enough_votes = False
+            len_vote_serial = len(propagated_block.get_vote_serial())
+            len_vote = len(pickle.dumps(self.approve_block(propagated_block)[0]))
+            num_committee = len([device for device in self.peer_list if device.return_role() == 'committee'])
+            if len_vote_serial > (num_committee // 2) * len_vote:
+                enough_votes = True
+
+            if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader and enough_votes:
+                self.append_block(propagated_block)
+            else:
+                print(f"The block was already added to {self.return_idx()}'s chain.")
+        else:  # only check whether the hash is correct and the sender is a leader.
+            if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader:
+                self.append_block(propagated_block)
+            else:
+                print(f"The block was already added to {self.return_idx()}'s chain.")
 
     # Send a request to peers to download the propagated (and accepted) block from leader.
     def request_to_download(self, block_to_download):
@@ -861,7 +876,7 @@ class Device:
             obtained_signatures.append(vote[0])  # ToDo: figure out whether to verify the signature, given key.
             vote_timestamps.append(vote[-1])
         serialized_votes = pickle.dumps(obtained_signatures)
-        self.proposed_block.set_vote_serial(bytearray(serialized_votes))
+        self.proposed_block.set_vote_serial(serialized_votes)
         self.proposed_block.set_block_time(max(vote_timestamps))
         self.proposed_block.set_signature(self.sign(self.proposed_block))
 

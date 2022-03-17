@@ -216,7 +216,7 @@ def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=
 # Can already obtain train and test sets from this within this function.
 def create_blobs(dims=2, samples=100, clusters=3, split_train_test=False, prop_test=None, is_iid=True, num_devices=3,
                  verbose=False):
-    X, y = make_blobs(n_samples=samples, centers=clusters, n_features=dims)
+    X, y = make_blobs(n_samples=samples, centers=clusters, n_features=dims, random_state=42)
 
     if verbose:
         print(X.shape)

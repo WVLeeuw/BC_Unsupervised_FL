@@ -1,6 +1,8 @@
 import hashlib
 import math
 import copy
+import pickle
+import shutil
 
 import block
 from block import Block
@@ -21,7 +23,7 @@ import numpy as np
 
 date_time = datetime.now().strftime("%m%d%Y_%H%M%S")
 log_folder_path = f"logs/{date_time}"
-model_snapshots_folder = "models"
+bc_folder = f"blockchains/{date_time}"
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                  description='BCFL_kmeans_Simulation')
@@ -37,8 +39,6 @@ parser.add_argument('-nm', '--num_malicious', type=int, default=0, help='number 
 parser.add_argument('-iid', '--IID', type=int, default=1, help='whether to allocate data in iid setting')
 parser.add_argument('-gc', '--num_global_centroids', type=int, default=3, help='number of centroids in the globally '
                                                                                'trained model')
-# parser.add_argument('-lc', '--num_local_centroids', type=int, default=3, help='number of centroids in locally trained'
-#                                                                               ' models')
 parser.add_argument('-le', '--num_local_epochs', type=int, default=1, help='number of epochs to perform for the '
                                                                            'acquisition of local update')
 parser.add_argument('-fa', '--fed_avg', type=int, default=1, help='whether to use Federated Averaging')
@@ -49,7 +49,7 @@ parser.add_argument('-gul', '--global_update_lag', type=float, default=.5,
                     help='parameter representing the lag of global model updates. Possible values between 0.0 and 1.0,'
                          'where a higher value represents more lag which in turn translates to new model updates '
                          'having less effect on the model update.')
-parser.add_argument('-ninit', '--num_reinitialize', type=int, default=10,
+parser.add_argument('-ninit', '--num_reinitialize', type=int, default=5,
                     help='parameter representing how often the global learning process may reset if it deems the '
                          'initial centroid positions to be poor (and thus decides that proper convergence is '
                          'unlikely).')
@@ -68,6 +68,9 @@ parser.add_argument('-lwt', '--leader_wait_time', type=float, default=0.0,
                     help="time window during which leaders wait for committee members to send their resulting "
                          "aggregate after they obtained the local updates from data owners. Wait time of 0.0 is "
                          "associated with no time limit.")
+parser.add_argument('-rfc', '--resume_from_chain', type=str, default=None,
+                    help='resume the global learning process from an existing blockchain from the path of a saved '
+                         'blockchain. Only provide the date.')
 
 # distributed system attributes
 parser.add_argument('-ns', '--network_stability', type=float, default=1.0, help='the odds of a device being and '
@@ -84,6 +87,11 @@ parser.add_argument('-contr', '--contribution_lag_param', type=float, default=.5
                     help="parameter used when computing a device's contribution during a learning round. It is "
                          "referred to as lag because the parameter determines how heavily contribution from past "
                          "rounds weighs into the computation of the most recent round's contribution of the device.")
+parser.add_argument('-cc', '--closely_connected', type=str, default='closely',
+                    help='whether to have each data owner be connected to all committee members, have the '
+                         'connection be one to one or have a handful of committee members see each update.'
+                         'Possible arguments are "loosely", "closely" and "somewhat", the latter meaning'
+                         'that a handful of committee members see each update.')
 
 # simulation attributes
 parser.add_argument('-ha', '--hard_assign', type=str, default='*,*,*',
@@ -93,9 +101,6 @@ parser.add_argument('-cs', '--check_signature', type=int, default=1, help='wheth
                                                                           'time or to assume trust')
 parser.add_argument('-aio', '--all_in_one_network', type=int, default=1,
                     help='whether to have all devices be aware of and connected to each other device in the network')
-parser.add_argument('-cc', '--closely_connected', type=int, default=1,
-                    help='whether to have each data owners be connected to all committee members or have the '
-                         'connection be one to one.')
 
 if __name__ == '__main__':
 
@@ -116,9 +121,8 @@ if __name__ == '__main__':
             f.write(f'\n--{arg_name} {arg}')
 
     # 2. create folder to save models in, if it does not already exist
-    if not os.path.isdir(model_snapshots_folder):
-        os.mkdir(model_snapshots_folder)
-    os.mkdir(f'{model_snapshots_folder}/{date_time}')
+    if not os.path.isdir(bc_folder):
+        os.mkdir(bc_folder)
 
     # 3. get number of devices per role required in the network
     roles_requirement = args['hard_assign'].split(',')
@@ -185,20 +189,29 @@ if __name__ == '__main__':
 
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
-        # feed the created blockchain with genesis block to each device.
-        device.blockchain = copy.copy(bc)
-        device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
-        # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
-        device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
-        device.register_in_network()
-        if args['verbose']:
-            print(str(device.obtain_latest_block()))
+        if args['resume_from_chain']:
+            bc_save_path = f"{bc_folder}/{args['resume_from_chain']}"
+            # ToDo: read file... split on '\n' as every whitespace signifies the 'border' between blocks.
+            with open(bc_save_path) as f:
+                chain = f.read()
+            blocks = chain.split('\n')
+            pass
+        else:
+            # feed the created blockchain with genesis block to each device.
+            device.blockchain = copy.copy(bc)
+            device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
+            # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
+            device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
+            device.register_in_network()
+            if args['verbose']:
+                print(str(device.obtain_latest_block()))
     # remove the device if it is in its own peer list
     for device in device_list:
         device.remove_peers(device)
 
     # 7. build log files, to be filled during execution
-    open(f"{log_folder_path}/hello_world.txt", 'w').close()  # ToDo: change .txt name. Actually fill it during exe.
+    # ToDo: build more files with sensible names. Actually fill them during exe.
+    # open(f"{log_folder_path}/hello_world.txt", 'w').close()
 
     # 8. run elbow method to make a sensible choice for global k.
     k_choices = []
@@ -214,7 +227,15 @@ if __name__ == '__main__':
     comm_round = 0
     num_rounds_no_winner = 0
     num_reinitialized = 0
-    while comm_round < args['num_comm']:
+    while total_comm_rounds < args['num_comm']:
+        # create log folder for communication round
+        log_folder_path_comm_round = f"{log_folder_path}/comm_{comm_round}"
+        if os.path.exists(log_folder_path_comm_round):
+            print(f"Deleting {log_folder_path_comm_round} and creating a new one.")
+            shutil.rmtree(log_folder_path_comm_round)
+        os.mkdir(log_folder_path_comm_round)
+        print(f"\nCommunication round {comm_round}.")
+
         comm_round_start_time = time.time()  # to keep track how long communication rounds take.
         total_comm_rounds += 1  # to keep track of the total nr of communication rounds.
 
@@ -295,6 +316,11 @@ if __name__ == '__main__':
                     and contr_vals[device.return_idx()] >= -.2:
                 device.assign_data_role()
                 data_owners_to_assign -= 1
+            # Other devices that do not meet the contribution requirement can still attempt in 10% of cases.
+            elif random.random() > 0.9 and not device.return_role():
+                print(f"{device.return_idx()} has been chosen to provide an update even though their contribution is "
+                      f"poor.")
+                device.assign_data_role()
 
             # Add data owners to the list of data owners.
             if device.return_role() == "data owner":
@@ -327,7 +353,7 @@ if __name__ == '__main__':
             # Send the result to a committee member in the device's peer list.
             # Depending on the closeness of connections, put the data owner either in every committee member's
             # associated set, or only put them in a single committee member's associated set.
-            if args['closely_connected']:
+            if args['closely_connected'] == 'closely':
                 for peer in device.return_peers():
                     if peer in committee_members_this_round:
                         peer.add_device_to_associated_set(device)
@@ -338,7 +364,12 @@ if __name__ == '__main__':
                         eligible_comm_members.append(peer)
                 random.shuffle(eligible_comm_members)
                 # Associate the device with only one committee member.
-                eligible_comm_members[0].add_device_to_associated_set(device)
+                if args['closely_connected'] == 'loosely':
+                    eligible_comm_members[0].add_device_to_associated_set(device)
+                else:  # have at most half of the committee members be associated with the data owner
+                    eligible_comm_members_filtered = eligible_comm_members[:len(committee_members_this_round)//2]
+                    for comm_member in eligible_comm_members_filtered:
+                        comm_member.add_device_to_associated_set(device)
 
         # iii. committee members validate retrieved updates and aggregate viable results
         for comm_member in committee_members_this_round:
@@ -441,7 +472,7 @@ if __name__ == '__main__':
                 proposed_g_centroids = leader.compute_update()
                 block = leader.build_block(proposed_g_centroids)
             if args['verbose']:
-                print(str(block))
+                print(str(block), '\n')
 
             if args['committee_member_block_wait_time']:
                 for comm_member in leader.return_online_committee_members():
@@ -575,7 +606,7 @@ if __name__ == '__main__':
                 comm_round = 0  # finally, reset communication round to 0.
                 if args['verbose']:
                     for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
-                        print(str(block))
+                        print(str(block), '\n')
                     print(
                         f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
                         f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
@@ -592,7 +623,7 @@ if __name__ == '__main__':
                         total_broadcast_delay += comm_member.request_to_download(winner.return_proposed_block())
                 if args['verbose']:
                     for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
-                        print(str(block))
+                        print(str(block), '\n')
                     print(f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
                           f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
                           f"to communicate the winning block with their peers.")
@@ -636,7 +667,7 @@ if __name__ == '__main__':
                 comm_round = 0  # finally, reset communication round to 0.
                 if args['verbose']:
                     for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
-                        print(str(block))
+                        print(str(block), '\n')
                     print(
                         f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
                         f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
@@ -646,13 +677,25 @@ if __name__ == '__main__':
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
         time_taken_per_round.append(comm_round_time_taken)
-        comm_round += 1
+
+        # ToDo: log stuff at end of round.
+        with open(f"{log_folder_path_comm_round}/round_{comm_round}_info.txt", 'a') as file:
+            file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
+
+        comm_round += 1  # finally, increment the round nr.
+
+    # Log the blockchain after global learning is done.
+    with open(f"{bc_folder}/round_{total_comm_rounds}.txt", 'a') as file:
+        blocks = [str(block) for block in device_list[-1].return_blockchain_obj().get_chain_structure()]
+        for block in blocks:
+            file.write(str(block) + "\n\n")
 
     # Plot time taken per round.
     plt.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
     plt.xlabel('Round number')
     plt.ylabel('Time taken (s)')
     plt.ylim([0.25, 3])
+    plt.savefig(fname=f"{log_folder_path}/time_per_round.png")
     plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
@@ -666,6 +709,7 @@ if __name__ == '__main__':
     # Plot the last centroids separately.
     for i in range(len(track_g_centroids[-1])):
         plt.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color='k', s=100)
+    plt.savefig(fname=f"{log_folder_path}/clustering.png")
     plt.show()
 
     print(f"Total number of communication rounds: {total_comm_rounds}.")
