@@ -45,7 +45,7 @@ parser.add_argument('-fa', '--fed_avg', type=int, default=1, help='whether to us
 parser.add_argument('-eps', '--epsilon', type=float, default=0.01,
                     help='threshold for the difference between the location of newly computed centroids and previous '
                          'global centroids s.t. when that difference is less than epsilon, the learning process ends.')
-parser.add_argument('-gul', '--global_update_lag', type=float, default=.5,
+parser.add_argument('-gul', '--global_update_lag', type=float, default=0.0,
                     help='parameter representing the lag of global model updates. Possible values between 0.0 and 1.0,'
                          'where a higher value represents more lag which in turn translates to new model updates '
                          'having less effect on the model update.')
@@ -309,7 +309,7 @@ if __name__ == '__main__':
             if device.return_role() == "committee":
                 committee_members_this_round.append(device)
 
-            # ToDo: determine a value for the contribution less than 0.0 that is sensible to exclude devices for.
+            # ToDo: change the way that data owners are assigned. Have it be probabilistic, dependent on contr. values.
             # Check whether the remaining devices have high enough contribution to be selected as data owner.
             # N.B. They should not already have a role assigned.
             elif data_owners_to_assign > 0 and device.return_role() not in ['leader', 'committee'] \
@@ -628,6 +628,11 @@ if __name__ == '__main__':
                           f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
                           f"to communicate the winning block with their peers.")
                 track_g_centroids.append(winner.retrieve_global_centroids())
+                # ToDo: log stuff about the winning block
+                with open(f"{log_folder_path_comm_round}/round_{comm_round}_info.txt", 'a') as file:
+                    file.write(f"Updated global centroids are: {winner.retrieve_global_centroids()}.\n")
+                    file.write(f"Deltas (Euclidean distance) between previous centroids and new centroids are:"
+                               f"{winner.return_deltas()}.\n")
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
                     comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
@@ -688,7 +693,7 @@ if __name__ == '__main__':
     with open(f"{bc_folder}/round_{total_comm_rounds}.txt", 'a') as file:
         blocks = [str(block) for block in device_list[-1].return_blockchain_obj().get_chain_structure()]
         for block in blocks:
-            file.write(str(block) + "\n\n")
+            file.write(str(block) + "\n")
 
     # Plot time taken per round.
     plt.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
@@ -699,6 +704,9 @@ if __name__ == '__main__':
     plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
+    print(f"Total number of centroids recorded: {len(track_g_centroids)}. \n"
+          f"Should be the same as chain length (if not reinitialized): "
+          f"{device_list[0].return_blockchain_obj().get_chain_length()}.")
     for device in device_list:
         plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
     colors = ['purple', 'orange', 'cyan']

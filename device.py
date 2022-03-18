@@ -485,6 +485,7 @@ class Device:
         updates_weights = []
         nr_records_list = [local_update_tuple[1] for local_update_tuple in self.centroids_idxs_records]
         total_nr_records = sum(nr_records_list)
+        data_owner_idxs = list(self.associated_data_owners_set)
 
         # Obtain scaling factors --> no. records per data owner compared to average no. records.
         for local_update_tuple in self.centroids_idxs_records:
@@ -494,6 +495,9 @@ class Device:
             scaling_fac = self._obtain_scaling_factor(curr_nr_records, total_nr_records, len(nr_records_list))
             self.update_contribution((curr_idx, curr_centroids))
             updates_weights.append((curr_centroids, scaling_fac))
+            if curr_idx in data_owner_idxs:
+                data_owner_idxs.remove(curr_idx)  # we have seen this data owner, so we remove it from the list.
+            # ToDo: check data_owner_idxs if there is anything left. Decrease their contribution.
 
         to_aggregate_per_centroid = []
         # Match local updates with global centroids and attach their weights.
@@ -553,6 +557,7 @@ class Device:
         return scaling_factor
 
     def return_aggregate_and_feedback(self):
+        print(f"Feedback this round from {self.return_idx()}: {self.contributions_this_round}.")
         return self.updated_centroids, self.contributions_this_round, self.return_idx()
 
     # Computes the contribution (in terms of gain in silhouette score) of a local update for a specific device.
@@ -665,7 +670,8 @@ class Device:
             if len_vote_serial > (num_committee // 2) * len_vote:
                 enough_votes = True
 
-            if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader and enough_votes:
+            if propagated_block.get_hash() != self.obtain_latest_block().get_hash() and sender_is_leader \
+                    and enough_votes:
                 self.append_block(propagated_block)
             else:
                 print(f"The block was already added to {self.return_idx()}'s chain.")
@@ -791,11 +797,10 @@ class Device:
         previous_hash = self.obtain_latest_block().get_hash()
         data = dict()
         data['centroids'] = new_g_centroids
-        if re_init:
+        data['contribution'] = self.update_contribution_final()
+        if re_init:  # reset contribution values.
             device_idxs = self.obtain_latest_block().get_data()['contribution'].keys()
             data['contribution'] = dict.fromkeys(device_idxs, 0)
-        else:
-            data['contribution'] = self.update_contribution_final()
         data['pos_reputation'], data['neg_reputation'] = self.update_reputation()
         block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
@@ -931,7 +936,7 @@ class Device:
         # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
         for device_idx in final_contr_comp.keys():
             if device_idx in final_contr:
-                final_contr[device_idx] = beta * final_contr_comp[device_idx] + (1 - beta) * final_contr[device_idx]
+                final_contr[device_idx] = (1-beta) * final_contr_comp[device_idx] + beta * final_contr[device_idx]
 
         contribution_update_time = (time.time() - contribution_update_time) / self.computation_power
         return final_contr
