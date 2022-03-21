@@ -820,9 +820,9 @@ class Device:
         recent_block_data = self.obtain_latest_block().get_data()
         data = dict()
         data['centroids'] = new_g_centroids
-        data['pos_reputation'] = recent_block_data['pos_reputation']  # simply copy previous reputation
+        data['contribution'] = recent_block_data['contribution']  # simply copy previous contribution
+        data['pos_reputation'] = recent_block_data['pos_reputation']  # idem for reputation
         data['neg_reputation'] = recent_block_data['neg_reputation']
-        data['contribution'] = recent_block_data['contribution']  # idem for contribution
         block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
         block.set_signature(self.sign(block))

@@ -8,6 +8,8 @@ import block
 from block import Block
 from blockchain import Blockchain
 from device import Device, DevicesInNetwork
+from sklearn import cluster
+from sklearn.metrics import silhouette_score
 import KMeans
 from utils import data_utils
 import matplotlib.pyplot as plt
@@ -309,17 +311,17 @@ if __name__ == '__main__':
             if device.return_role() == "committee":
                 committee_members_this_round.append(device)
 
-            # ToDo: change the way that data owners are assigned. Have it be probabilistic, dependent on contr. values.
+            # ToDo: re-evaluate contribution completely, as it goes to zero for every device as learning rounds increase
             # Check whether the remaining devices have high enough contribution to be selected as data owner.
             # N.B. They should not already have a role assigned.
             elif data_owners_to_assign > 0 and device.return_role() not in ['leader', 'committee'] \
-                    and contr_vals[device.return_idx()] >= -.2:
+                    and contr_vals[device.return_idx()] >= -.05:
                 device.assign_data_role()
                 data_owners_to_assign -= 1
             # Other devices that do not meet the contribution requirement can still attempt in 10% of cases.
             elif random.random() > 0.9 and not device.return_role():
-                print(f"{device.return_idx()} has been chosen to provide an update even though their contribution is "
-                      f"poor.")
+                print(f"{device.return_idx()} has been chosen to provide an update even though their contribution "
+                      f"and/or reputation is poor.")
                 device.assign_data_role()
 
             # Add data owners to the list of data owners.
@@ -328,6 +330,21 @@ if __name__ == '__main__':
 
             # finally, check whether the devices are online.
             device.online_switcher()
+
+        # log roles assigned for the devices, along with their reputation and contribution values.
+        for device in device_list:
+            # N.B. We can also keep track of how often a device is selected for a (specific) role while being malicious.
+            role_assigned = device.return_role()
+            contribution_val = device.obtain_latest_block().get_data()['contribution'][device.return_idx()]
+            reputation_val = (device.obtain_latest_block().get_data()['pos_reputation'][device.return_idx()],
+                              device.obtain_latest_block().get_data()['neg_reputation'][device.return_idx()])
+            is_malicious_node = "M" if device.return_is_malicious() else "B"
+            with open(f"{log_folder_path_comm_round}/role_assignment_comm_{comm_round}.txt", 'a') as file:
+                file.write(f"{device.return_idx()} {is_malicious_node} assigned {device.return_role()} having "
+                           f"contribution {contribution_val} and reputation {reputation_val}. \n")
+            with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round}.txt", 'a') as file:
+                if device.return_is_malicious():
+                    file.write(f"{device.return_idx()} assigned {device.return_role()}. \n")
 
         # ToDo: print more useful statistics here for debugging at start of round.
         if args['verbose']:
@@ -392,6 +409,16 @@ if __name__ == '__main__':
                         if local_update_total_time < comm_member.return_update_wait_time():
                             if comm_member.online_switcher():
                                 comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
+                                with open(f"{log_folder_path_comm_round}/silhouette_diffs_{comm_round}.txt",
+                                          'a') as file:
+                                    data_owner_silhouette = data_owner.validate_update(local_update)
+                                    data_owner_is_malicious_node = "M" if data_owner.return_is_malicious() else "B"
+                                    comm_member_silhouette = comm_member.validate_update(local_update)
+                                    file.write(f"{comm_member_silhouette - data_owner_silhouette}, data owner "
+                                               f"{data_owner.return_idx()} {data_owner_is_malicious_node} local "
+                                               f"silhouette score was {data_owner_silhouette} while the committee "
+                                               f"member {comm_member.return_idx()} obtained a silhouette score of "
+                                               f"{comm_member_silhouette}. \n")
                     else:
                         print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
                               f"offline.")
@@ -409,6 +436,15 @@ if __name__ == '__main__':
                         # finally, obtain the local update.
                         if comm_member.online_switcher():
                             comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
+                            with open(f"{log_folder_path_comm_round}/silhouette_diffs_{comm_round}.txt", 'a') as file:
+                                data_owner_silhouette = data_owner.validate_update(local_update)
+                                data_owner_is_malicious_node = "M" if data_owner.return_is_malicious() else "B"
+                                comm_member_silhouette = comm_member.validate_update(local_update)
+                                file.write(f"{comm_member_silhouette-data_owner_silhouette}, data owner "
+                                           f"{data_owner.return_idx()} {data_owner_is_malicious_node} local "
+                                           f"silhouette score was {data_owner_silhouette} while the committee member "
+                                           f"{comm_member.return_idx()} obtained a silhouette score of "
+                                           f"{comm_member_silhouette}. \n")
                     else:
                         print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
                               f"offline.")
@@ -431,7 +467,6 @@ if __name__ == '__main__':
                           str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
 
         # iv. committee members send updated centroids to every leader
-        block_arrival_queue = {}
         for leader in leaders_this_round:
             if args['leader_wait_time']:
                 for comm_member in leader.return_online_committee_members():
@@ -474,6 +509,15 @@ if __name__ == '__main__':
             if args['verbose']:
                 print(str(block), '\n')
 
+            # log proposed block
+            with open(f"{log_folder_path_comm_round}/proposed_blocks_round_{comm_round}.txt", 'a') as file:
+                is_malicious_node = "M" if leader.return_is_malicious() else "B"
+                file.write(f"{leader.return_idx()} {is_malicious_node} "
+                           f"proposed block: \n {leader.return_proposed_block()}. \n")
+
+        # Determine the arrival order of proposed blocks.
+        block_arrival_queue = {}
+        for leader in leaders_this_round:
             if args['committee_member_block_wait_time']:
                 for comm_member in leader.return_online_committee_members():
                     comm_member_link_speed = comm_member.return_link_speed()
@@ -683,9 +727,41 @@ if __name__ == '__main__':
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
         time_taken_per_round.append(comm_round_time_taken)
 
-        # ToDo: log stuff at end of round.
+        # ToDo: figure out if there is any general stuff that should be logged here, every time.
         with open(f"{log_folder_path_comm_round}/round_{comm_round}_info.txt", 'a') as file:
             file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
+            silhouette_scores = []
+            # Need to treat the dataset as a global dataset to be able to compare with centralized and federated k-means
+            global_dataset = []
+            global_centroids = device_list[-1].retrieve_global_centroids()
+            for device in device_list:
+                silhouette_scores.append(device.validate_update(device.retrieve_global_centroids()))
+                global_dataset.append(device.dataset)
+            file.write(f"Current average silhouette score across all devices: "
+                       f"{sum(silhouette_scores)/len(silhouette_scores)}. \n")
+            # Log the silhouette score if we were treating the combined datasets as a single dataset.
+            global_dataset = np.asarray([record for sublist in global_dataset for record in sublist])
+            global_model = cluster.KMeans(n_clusters=global_centroids.shape[0], init=global_centroids, n_init=1,
+                                          max_iter=1)
+            cluster_labels = global_model.fit_predict(global_dataset)
+            file.write(f"Combining the local datasets into one produces a silhouette score of: "
+                       f"{silhouette_score(global_dataset, cluster_labels)}. \n")
+
+        # log silhouette per device, also do this for aggregates at committee members.
+        for device in device_list:
+            silhouette_this_round = device.validate_update(device.retrieve_global_centroids())
+            with open(f"{log_folder_path_comm_round}/silhouette_round_{comm_round}.txt", 'a') as file:
+                # N.B. whether the node is malicious does not seem relevant to be logged here.
+                is_malicious_node = "M" if device.return_is_malicious() else "B"
+                file.write(f"{device.return_idx()} {device.return_role()} {is_malicious_node}: "
+                           f"{silhouette_this_round}. \n")
+            with open(f"{log_folder_path_comm_round}/silhouette_aggr_round_{comm_round}.txt", 'a') as file:
+                if device.return_role() == 'committee' and len(device.updated_centroids) > 0:
+                    file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids} achieving a "
+                               f"silhouette score of {device.validate_update(np.asarray(device.updated_centroids))}. "
+                               f"\n")
+                elif device.return_role() == 'committee':
+                    file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids}. \n")
 
         comm_round += 1  # finally, increment the round nr.
 
@@ -693,7 +769,7 @@ if __name__ == '__main__':
     with open(f"{bc_folder}/round_{total_comm_rounds}.txt", 'a') as file:
         blocks = [str(block) for block in device_list[-1].return_blockchain_obj().get_chain_structure()]
         for block in blocks:
-            file.write(str(block) + "\n")
+            file.write(str(block) + "\n\n")
 
     # Plot time taken per round.
     plt.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
