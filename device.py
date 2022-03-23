@@ -785,6 +785,9 @@ class Device:
         self.global_update_time = global_update_computation_time
         return np.asarray(malicious_update)
 
+    def return_global_update_time(self):
+        return self.global_update_time
+
     def obtain_aggr_and_feedback(self, aggregated_centroids, feedback, committee_idx):
         self.new_centroids.append(aggregated_centroids)
         self.feedback_dicts.append(feedback)
@@ -831,9 +834,12 @@ class Device:
         self.proposal_time = block_proposal_time
         return block
 
+    def return_proposal_time(self):
+        return self.proposal_time
+
     # Return the proposed block, if there is any, along with the time it took to build it.
     def broadcast_block(self):
-        return self.proposed_block, self.global_update_time + self.proposal_time
+        return self.proposed_block, self.global_update_time
 
     # Broadcast a request to stop the global learning process. Called only when the stop condition is met.
     def _broadcast_stop_request(self):
