@@ -1,8 +1,10 @@
+import json
 import math
 import argparse
 import copy
 import math
 import os
+import pickle
 import random
 import shutil
 import sys
@@ -192,6 +194,7 @@ if __name__ == '__main__':
         if args['resume_from_chain']:
             bc_save_path = f"{bc_folder}/{args['resume_from_chain']}"
             # ToDo: read file... split on '\n' as every whitespace signifies the 'border' between blocks.
+            # N.B. this behavior depends on how we end up implementing json dumping and loading.
             with open(bc_save_path) as f:
                 chain = f.read()
             blocks = chain.split('\n')
@@ -203,8 +206,8 @@ if __name__ == '__main__':
             # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
             device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
             device.register_in_network()
-            if args['verbose']:
-                print(str(device.obtain_latest_block()))
+    if args['verbose']:
+        print(str(device_list[-1].obtain_latest_block()))
     # remove the device if it is in its own peer list
     for device in device_list:
         device.remove_peers(device)
@@ -259,6 +262,7 @@ if __name__ == '__main__':
         chosen_catch_up = []  # 10% probability that a device having (1, 1) reputation is chosen.
         for device in device_list:
             pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
+            # pos_count == neg_count == 1 corresponds to new devices (in theory).
             if pos_count == neg_count == 1:  # ToDo: check whether this is the only condition to be chosen to catch up.
                 # assign committee role with 10% probability.
                 if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
@@ -676,7 +680,6 @@ if __name__ == '__main__':
                           f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
                           f"to communicate the winning block with their peers.")
                 track_g_centroids.append(winner.retrieve_global_centroids())
-                # ToDo: log stuff about the winning block
                 with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
                     file.write(f"Updated global centroids are: {winner.retrieve_global_centroids()}.\n")
                     file.write(f"Deltas (Euclidean distance) between previous centroids and new centroids are: "
@@ -731,8 +734,7 @@ if __name__ == '__main__':
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
         time_taken_per_round.append(comm_round_time_taken)
 
-        # ToDo: figure out if there is any general stuff that should be logged here, every time.
-        with open(f"{log_folder_path_comm_round}/round_{total_comm_rounds}_info.txt", 'a') as file:
+        with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
             file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
             silhouette_scores = []
             # Need to treat the dataset as a global dataset to be able to compare with centralized and federated k-means
@@ -757,7 +759,7 @@ if __name__ == '__main__':
         # log silhouette per device, also do this for aggregates at committee members.
         for device in device_list:
             silhouette_this_round = device.validate_update(device.retrieve_global_centroids())
-            with open(f"{log_folder_path_comm_round}/silhouette_round_{total_comm_rounds}.txt", 'a') as file:
+            with open(f"{log_folder_path_comm_round}/silhouette_round_{comm_round + 1}.txt", 'a') as file:
                 # N.B. whether the node is malicious does not seem relevant to be logged here.
                 is_malicious_node = "M" if device.return_is_malicious() else "B"
                 file.write(f"{device.return_idx()} {device.return_role()} {is_malicious_node}: "
@@ -772,11 +774,19 @@ if __name__ == '__main__':
 
         comm_round += 1  # finally, increment the round nr.
 
-    # Log the blockchain after global learning is done.
-    with open(f"{bc_folder}/round_{total_comm_rounds}.txt", 'a') as file:
+    # Log the blockchain after global learning is done, N.B. already did + 1
+    with open(f"{bc_folder}/round_{comm_round}.txt", 'a') as file:
         blocks = [str(block) for block in device_list[-1].return_blockchain_obj().get_chain_structure()]
         for block in blocks:
             file.write(str(block) + "\n\n")
+
+    # Log the blockchain as .json, so that it can be (easily) read and converted back to blockchain object again.
+    blocks = device_list[-1].return_blockchain_obj().get_chain_structure()
+    for block in blocks:
+        with open(f"{bc_folder}/round_{comm_round}_block_{block.index}.json", 'a') as file:
+            json_block = block.toJSON()
+            file.write(json_block)
+        # ToDo: figure out how to convert json-dumped blocks back to a Blockchain.
 
     print(f"Total time spent performing {total_comm_rounds} rounds: {sum(time_taken_per_round)} seconds.")
 

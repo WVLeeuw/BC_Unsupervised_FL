@@ -1,5 +1,7 @@
 import hashlib
 import datetime as dt
+import json
+
 from Crypto.PublicKey import RSA
 
 
@@ -15,7 +17,7 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         # leader specific
         self.produced_by = produced_by
         self.miner_pubkey = miner_pubkey
-        self.vote_serialization = None
+        self.vote_serialization = []
         self.block_time = self.timestamp
 
     def mine(self, difficulty):
@@ -27,13 +29,28 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
 
     # N.B. this string representation is also used for hashing/signing.
     def __str__(self):
+        # First ensure that each value can actually be put as is.
+        prev_hash = self.previous_hash
+        if not isinstance(self.previous_hash, str):
+            prev_hash = self.previous_hash.hexdigest()
         return f"index: {self.index}, \n" \
-               f"previous hash: {self.previous_hash.hexdigest()}, \n" \
+               f"previous hash: {prev_hash}, \n" \
                f"data: {self.data}, \n" \
                f"produced by: {self.produced_by}, \n" \
                f"votes serial: {self.vote_serialization}. \n" \
                f"block generation time: {self.timestamp}, \n" \
                f"block finalization time: {self.block_time}"
+
+    def toJSON(self):
+        self.data['centroids'] = self.data['centroids'].tolist()
+        self.hash = self.hash.hexdigest()
+        self.previous_hash = self.previous_hash.hexdigest()
+        self.vote_serialization = list(self.vote_serialization)
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=False, indent=2)
+
+    # ToDo: read block (or multiple blocks) from file as .json.
+    def fromJSON(self):
+        pass
 
     ''' signature functions '''
 
