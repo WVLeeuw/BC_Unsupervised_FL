@@ -308,7 +308,7 @@ class Device:
                 peer_chain = peer.return_blockchain_obj()
                 if peer_chain.get_chain_length() > cur_chain_len:
                     if peer_chain.is_chain_valid():
-                        print(f"A longer chain from {peer.return_idx()} with length {peer_chain.return_chain_length()} "
+                        print(f"A longer chain from {peer.return_idx()} with length {peer_chain.get_chain_length()} "
                               f"was found and deemed valid.")
                         cur_chain_len = peer_chain.get_chain_length()
                         longest_chain = peer_chain
@@ -999,7 +999,7 @@ class DevicesInNetwork(object):
     def _dataset_allocation(self):
         # read dataset
         train_data, labels = data_utils.load_data(num_devices=self.num_devices, is_iid=self.is_iid,
-                                                  dataset=self.dataset, samples=1000)
+                                                  dataset=self.dataset, samples=500)
 
         malicious_nodes_set = []
         if self.num_malicious:

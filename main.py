@@ -19,6 +19,7 @@ from sklearn.metrics import silhouette_score
 
 import KMeans
 from blockchain import Blockchain
+import block
 from device import DevicesInNetwork
 from utils import data_utils
 
@@ -192,20 +193,31 @@ if __name__ == '__main__':
     # 6. register devices and initialize global parameters including genesis block.
     for device in device_list:
         if args['resume_from_chain']:
-            bc_save_path = f"{bc_folder}/{args['resume_from_chain']}"
-            # ToDo: read file... split on '\n' as every whitespace signifies the 'border' between blocks.
-            # N.B. this behavior depends on how we end up implementing json dumping and loading.
-            with open(bc_save_path) as f:
-                chain = f.read()
-            blocks = chain.split('\n')
-            pass
+            bc_save_path = f"blockchains/{args['resume_from_chain']}/"
+            blocks = []
+            for f in os.listdir(bc_save_path):
+                if f.endswith('.json'):
+                    cur_block = json.load(open(bc_save_path + '/' + f))
+                    blocks.append(block.fromJSON(cur_block))
+
+            blocks = sorted(blocks, key=lambda x: x.index, reverse=False)
+            chain = Blockchain()
+
+            for b in blocks:
+                chain.append_block(b)
+
+            if chain.is_chain_valid():  # feed the blockchain to the devices if it is valid.
+                device.blockchain = copy.copy(chain)
+            else:  # start from chain with only genesis block.
+                device.blockchain = copy.copy(bc)
         else:
             # feed the created blockchain with genesis block to each device.
             device.blockchain = copy.copy(bc)
-            device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
-            # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
-            device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
-            device.register_in_network()
+
+        device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
+        # simulates peer registration, connects to some or all devices depending on 'all_in_one_network'.
+        device.set_devices_dict_and_aio(devices_in_network.devices_set, args['all_in_one_network'])
+        device.register_in_network()
     if args['verbose']:
         print(str(device_list[-1].obtain_latest_block()))
     # remove the device if it is in its own peer list
