@@ -25,7 +25,7 @@ def load(subsample_train_frac=None, prop_train=None, prop_test=None, is_iid=True
 
 def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, prop_test=None, dims=2, samples=100,
               clusters=3, verbose=False):
-    eligible_datasets = ['iris', 'breast cancer', 'wine', 'heart disease', 'forest types', 'blobs']
+    eligible_datasets = ['iris', 'breast cancer', 'wine', 'heart disease', 'forest types', 'blobs', 'dummy']
     if dataset not in eligible_datasets:
         print("No dataset was requested or the requested dataset could not be retrieved.")
         print("Defaulting to generating blobs...")
@@ -88,6 +88,13 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
                     return NotImplementedError
                 else:
                     return np.array_split(df, num_devices)
+
+        if dataset == 'dummy':
+            clients_per_cluster = num_devices//clusters
+            data, _ = create_dummy_data(dims=dims, clients_per_cluster=clients_per_cluster,
+                                        samples_each=samples//num_devices, clusters=clusters, verbose=True)
+            print(len(data))
+            return data, _
 
         else:  # default case
             print("Generating blobs...")
@@ -198,15 +205,17 @@ def obtain_bounds_multiple(dfs):
 
 
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):
+    np.random.seed(420000)
     num_clients = clients_per_cluster * clusters
+    print(f"Number of clients set to: {num_clients}.")
     # create gaussian data set, per client one mean
     means = np.arange(1, clusters + 1)
     means = np.tile(A=means, reps=clients_per_cluster)
     noise = np.random.normal(loc=0.0, scale=scale, size=(num_clients, samples_each, dims))
     data = np.expand_dims(np.expand_dims(means, axis=1), axis=2) + noise
     if verbose:
-        print(means)
-        print(noise)
+        # print(means)
+        # print(noise)
         print("dummy data shape: ", data.shape)
     data = [data[i] for i in range(num_clients)]
     return data, means

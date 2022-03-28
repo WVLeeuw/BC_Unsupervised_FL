@@ -909,11 +909,17 @@ class Device:
         for member_idx in self.seen_committee_idxs:
             if member_idx in updated_pos_reputation:  # check if key exists
                 updated_pos_reputation[member_idx] = updated_pos_reputation.get(member_idx, 1) + 1
+            else:  # first time we encounter the device
+                # initialized at one, plus one successful interaction, for clarity
+                updated_pos_reputation[member_idx] = 1 + 1
 
         for member_idx in committee_members_idxs:
             if member_idx not in self.seen_committee_idxs:
                 if member_idx in updated_neg_reputation:
                     updated_neg_reputation[member_idx] = updated_neg_reputation.get(member_idx, 1) + 1
+                else:  # first time we encounter the device
+                    # initialized at one, plus one successful interaction, for clarity
+                    updated_neg_reputation[member_idx] = 1 + 1
 
         return updated_pos_reputation, updated_neg_reputation
 
@@ -941,6 +947,8 @@ class Device:
         for device_idx in final_contr_comp.keys():
             if device_idx in final_contr:
                 final_contr[device_idx] = (1-beta) * final_contr_comp[device_idx] + beta * final_contr[device_idx]
+            else:
+                final_contr[device_idx] = final_contr_comp[device_idx]  # first time we encounter the device.
 
         contribution_update_time = (time.time() - contribution_update_time) / self.computation_power
         return final_contr

@@ -54,12 +54,24 @@ def test_data_load():
     print(test.head())
 
 
+# What about these params? 1 client per cluster, 20 samples each with 3 clusters in total. Does this have 60 records?
 def test_data_load_numpy():
-    data, means = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, samples_each=20, clusters=3)
+    data, means = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, samples_each=20, clusters=3, verbose=True)
+    # We may want instead 500 samples from 3 clusters spread across 20 devices. If clients_per_cluster is then small
+    # enough, would we still consider this to be non-IID setting? IID setting we have all clients have records from
+    # each cluster.
     for c in data:
         plt.scatter(c[:, 0], c[:, 1])
     plt.show()
-    print(means)
+    print(data)
+
+
+def test_dummy_data_complex():
+    data, means = data_utils.create_dummy_data(dims=2, clients_per_cluster=7, samples_each=25, clusters=3, verbose=True)
+    for c in data:
+        plt.scatter(c[:, 0], c[:, 1])
+    plt.show()
+    print(len(data), (len(data[0])), data)
 
 
 def test_make_blobs_divide():
@@ -80,8 +92,8 @@ def test_real_data_divide():
     dfs_train = []
     dfs_test = []
     for i in range(num_devices):
-        local_data = train.iloc[i*train_size_local:(i+1)*train_size_local]
-        local_test_data = test.iloc[i*test_size_local:(i+1)*test_size_local]
+        local_data = train.iloc[i * train_size_local:(i + 1) * train_size_local]
+        local_test_data = test.iloc[i * test_size_local:(i + 1) * test_size_local]
         print(local_data.shape, local_test_data.shape)
         dfs_train.append(local_data)
         dfs_test.append(local_test_data)
@@ -147,4 +159,3 @@ def test_obtain_bounds_multiple():
     for i in range(len(min_vals)):
         bounds.append([min_vals[i], max_vals[i]])
     print(bounds)
-

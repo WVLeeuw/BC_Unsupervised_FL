@@ -22,6 +22,7 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         self.block_time = self.timestamp
 
     def mine(self, difficulty):
+        # Sanity check.
         if isinstance(self.hash, str):
             self.hash = hashlib.sha256()
         self.hash.update(str(self).encode('utf-8'))

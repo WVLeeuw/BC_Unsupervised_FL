@@ -11,7 +11,7 @@ bc_folders = '../blockchains/'
 
 
 def test_individual_block_read():
-    date = '03242022_173023'
+    date = '03242022_173023'  # N.B. should exist.
     with open(f"{bc_folders + date}/round_63_block_12.json") as file:
         cur_block = json.load(file)
     # block = Block(**cur_block)  # This would work if all keys in jsonfile were in block params.
@@ -20,7 +20,7 @@ def test_individual_block_read():
 
 
 def test_multiple_to_bc():
-    date = '03242022_173023'
+    date = '03242022_173023'  # N.B. should exist.
     blocks = []
     for f in os.listdir(bc_folders + date):
         if f.endswith('.json'):

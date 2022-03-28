@@ -15,7 +15,7 @@ from sys import getsizeof
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import cluster
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 import KMeans
 from blockchain import Blockchain
@@ -273,7 +273,10 @@ if __name__ == '__main__':
         eligible_leaders = {}
         chosen_catch_up = []  # 10% probability that a device having (1, 1) reputation is chosen.
         for device in device_list:
-            pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
+            if device.return_idx() in pos_rep and device.return_idx() in neg_rep:
+                pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
+            else:  # initialize both to be 1 (as a new device must have just joined).
+                pos_count, neg_count = 1, 1
             # pos_count == neg_count == 1 corresponds to new devices (in theory).
             if pos_count == neg_count == 1:  # ToDo: check whether this is the only condition to be chosen to catch up.
                 # assign committee role with 10% probability.
@@ -328,15 +331,20 @@ if __name__ == '__main__':
             if data_owners_to_assign and contr_bounds[0] < 0.0 and not device.return_role():
                 contr_range = abs(contr_bounds[1] - contr_bounds[0])
                 # Exclude the bottom 25% of contributors if there are negative contribution values.
-                if contr_vals[device.return_idx()] > contr_bounds[0] + .25 * contr_range:
-                    device.assign_data_role()
-                    data_owners_to_assign -= 1
-                # And have each device has a 10% chance otherwise to be picked to 'catch up'.
-                elif random.random() > 0.9:
-                    print(f"{device.return_idx()} has been chosen to provide an update even though their contribution "
-                          f"and/or reputation is poor.")
-                    device.assign_data_role()
-                    data_owners_to_assign -= 1
+                if device.return_idx() in contr_vals:
+                    if contr_vals[device.return_idx()] > contr_bounds[0] + .25 * contr_range:
+                        device.assign_data_role()
+                        data_owners_to_assign -= 1
+                    # And have each device has a 10% chance otherwise to be picked to 'catch up'.
+                    elif random.random() > 0.9:
+                        print(f"{device.return_idx()} has been chosen to provide an update even though their contribution "
+                              f"and/or reputation is poor.")
+                        device.assign_data_role()
+                        data_owners_to_assign -= 1
+                elif not device.return_role():  # a new device must have just joined.
+                    if random.random() > 0.9:
+                        device.assign_data_role()
+                        data_owners_to_assign -= 1
             # if there are no devices that have contributed negatively, we can assign any device.
             elif data_owners_to_assign and not device.return_role():
                 if not device.return_role():
@@ -354,16 +362,20 @@ if __name__ == '__main__':
         for device in device_list:
             # N.B. We can also keep track of how often a device is selected for a (specific) role while being malicious.
             role_assigned = device.return_role()
-            contribution_val = device.obtain_latest_block().get_data()['contribution'][device.return_idx()]
-            reputation_val = (device.obtain_latest_block().get_data()['pos_reputation'][device.return_idx()],
-                              device.obtain_latest_block().get_data()['neg_reputation'][device.return_idx()])
-            is_malicious_node = "M" if device.return_is_malicious() else "B"
-            with open(f"{log_folder_path_comm_round}/role_assignment_comm_{comm_round + 1}.txt", 'a') as file:
-                file.write(f"{device.return_idx()} {is_malicious_node} assigned {device.return_role()} having "
-                           f"contribution {contribution_val} and reputation {reputation_val}. \n")
-            with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round + 1}.txt", 'a') as file:
-                if device.return_is_malicious():
-                    file.write(f"{device.return_idx()} assigned {device.return_role()}. \n")
+            latest_block_data = device.obtain_latest_block().get_data()
+            if device.return_idx() in latest_block_data['contribution'] and \
+                device.return_idx() in latest_block_data['pos_reputation'] and \
+                device.return_idx() in latest_block_data['neg_reputation']:
+                contribution_val = latest_block_data['contribution'][device.return_idx()]
+                reputation_val = (latest_block_data['pos_reputation'][device.return_idx()],
+                                  latest_block_data['neg_reputation'][device.return_idx()])
+                is_malicious_node = "M" if device.return_is_malicious() else "B"
+                with open(f"{log_folder_path_comm_round}/role_assignment_comm_{comm_round + 1}.txt", 'a') as file:
+                    file.write(f"{device.return_idx()} {is_malicious_node} assigned {device.return_role()} having "
+                               f"contribution {contribution_val} and reputation {reputation_val}. \n")
+                with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round + 1}.txt", 'a') as file:
+                    if device.return_is_malicious():
+                        file.write(f"{device.return_idx()} assigned {device.return_role()}. \n")
 
         # ToDo: print more useful statistics here for debugging at start of round.
         if args['verbose']:
@@ -764,6 +776,8 @@ if __name__ == '__main__':
             cluster_labels = global_model.fit_predict(global_dataset)
             file.write(f"Combining the local datasets into one produces a silhouette score of: "
                        f"{silhouette_score(global_dataset, cluster_labels)}. \n")
+            file.write(f"Combining the local datasets into one produces a Davies-Bouldin score of: "
+                       f"{davies_bouldin_score(global_dataset, cluster_labels)}. \n")
             file.write(f"Number of leaders this round: {len(leaders_this_round)}, \n"
                        f"Number of committee members this round: {len(committee_members_this_round)}, \n"
                        f"Number of data owners this round: {len(data_owners_this_round)}. \n")
