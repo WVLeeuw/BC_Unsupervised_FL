@@ -104,7 +104,6 @@ parser.add_argument('-cs', '--check_signature', type=int, default=1, help='wheth
 parser.add_argument('-aio', '--all_in_one_network', type=int, default=1,
                     help='whether to have all devices be aware of and connected to each other device in the network')
 
-
 if __name__ == '__main__':
 
     # get arguments
@@ -234,6 +233,7 @@ if __name__ == '__main__':
 
     # BCFL-KMeans starts here
     time_taken_per_round = []
+    est_time_taken_parallel_per_round = []
     total_comm_rounds = 0
     comm_round = 0
     num_rounds_no_winner = 0
@@ -248,6 +248,7 @@ if __name__ == '__main__':
         print(f"\nCommunication round {comm_round + 1}.")
 
         comm_round_start_time = time.time()  # to keep track how long communication rounds take.
+        parallel_time_estimate = 0  # to keep track of the time it would take if every device ran in parallel
         total_comm_rounds += 1  # to keep track of the total nr of communication rounds.
 
         # i. assign roles to devices dependent on contribution and reputation
@@ -278,7 +279,7 @@ if __name__ == '__main__':
             else:  # initialize both to be 1 (as a new device must have just joined).
                 pos_count, neg_count = 1, 1
             # pos_count == neg_count == 1 corresponds to new devices (in theory).
-            if pos_count == neg_count == 1:  # ToDo: check whether this is the only condition to be chosen to catch up.
+            if pos_count == neg_count == 1:
                 # assign committee role with 10% probability.
                 if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
                     chosen_catch_up.append(device.return_idx())
@@ -337,8 +338,9 @@ if __name__ == '__main__':
                         data_owners_to_assign -= 1
                     # And have each device has a 10% chance otherwise to be picked to 'catch up'.
                     elif random.random() > 0.9:
-                        print(f"{device.return_idx()} has been chosen to provide an update even though their contribution "
-                              f"and/or reputation is poor.")
+                        print(
+                            f"{device.return_idx()} has been chosen to provide an update even though their contribution "
+                            f"and/or reputation is poor.")
                         device.assign_data_role()
                         data_owners_to_assign -= 1
                 elif not device.return_role():  # a new device must have just joined.
@@ -364,8 +366,8 @@ if __name__ == '__main__':
             role_assigned = device.return_role()
             latest_block_data = device.obtain_latest_block().get_data()
             if device.return_idx() in latest_block_data['contribution'] and \
-                device.return_idx() in latest_block_data['pos_reputation'] and \
-                device.return_idx() in latest_block_data['neg_reputation']:
+                    device.return_idx() in latest_block_data['pos_reputation'] and \
+                    device.return_idx() in latest_block_data['neg_reputation']:
                 contribution_val = latest_block_data['contribution'][device.return_idx()]
                 reputation_val = (latest_block_data['pos_reputation'][device.return_idx()],
                                   latest_block_data['neg_reputation'][device.return_idx()])
@@ -377,7 +379,6 @@ if __name__ == '__main__':
                     if device.return_is_malicious():
                         file.write(f"{device.return_idx()} assigned {device.return_role()}. \n")
 
-        # ToDo: print more useful statistics here for debugging at start of round.
         if args['verbose']:
             print(f"Number of leaders this round: {len(leaders_this_round)} \n"
                   f"Number of committee members this round: {len(committee_members_this_round)} \n"
@@ -390,6 +391,8 @@ if __name__ == '__main__':
             comm_member.reset_vars_committee_member()
         for leader in leaders_this_round:
             leader.reset_vars_leader()
+
+        role_assignment_time = time.time() - comm_round_start_time
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
@@ -420,6 +423,7 @@ if __name__ == '__main__':
                         comm_member.add_device_to_associated_set(device)
 
         # iii. committee members validate retrieved updates and aggregate viable results
+        max_local_update_time = 0  # including transmission
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             if args['committee_member_update_wait_time']:
@@ -436,6 +440,9 @@ if __name__ == '__main__':
                         local_update_size = getsizeof([local_update, nr_records, data_owner_idx])
                         transmission_delay = local_update_size / lower_link_speed
                         local_update_total_time = local_update_spent_time + transmission_delay
+
+                        if local_update_total_time > max_local_update_time:
+                            max_local_update_time = local_update_total_time
                         # check whether the time taken was less than the allowed time for local updating.
                         if local_update_total_time < comm_member.return_update_wait_time():
                             if comm_member.online_switcher():
@@ -464,6 +471,10 @@ if __name__ == '__main__':
                         local_update_size = getsizeof([local_update, nr_records, data_owner_idx])
                         transmission_delay = local_update_size / lower_link_speed
                         local_update_total_time = local_update_spent_time + transmission_delay
+
+                        if local_update_total_time > max_local_update_time:
+                            max_local_update_time = local_update_total_time
+
                         # finally, obtain the local update.
                         if comm_member.online_switcher():
                             comm_member.obtain_local_update(local_update, nr_records, data_owner_idx)
@@ -499,6 +510,7 @@ if __name__ == '__main__':
                           str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
 
         # iv. committee members send updated centroids to every leader
+        max_aggr_time = 0  # including transmission
         for leader in leaders_this_round:
             if args['leader_wait_time']:
                 for comm_member in leader.return_online_committee_members():
@@ -511,6 +523,9 @@ if __name__ == '__main__':
                         aggregate_and_feedback_size = getsizeof([centroids, feedback, idx])
                         transmission_delay = aggregate_and_feedback_size / lower_link_speed
                         aggr_and_feedback_total_time = aggregation_spent_time + transmission_delay
+
+                        if aggr_and_feedback_total_time > max_aggr_time:
+                            max_aggr_time = aggr_and_feedback_total_time
                         # finally, obtain the aggregate and associated feedback.
                         if aggr_and_feedback_total_time < leader.return_aggr_wait_time():
                             if leader.online_switcher():
@@ -526,6 +541,9 @@ if __name__ == '__main__':
                         aggregate_and_feedback_size = getsizeof([centroids, feedback, idx])
                         transmission_delay = aggregate_and_feedback_size / lower_link_speed
                         aggr_and_feedback_total_time = aggregation_spent_time + transmission_delay
+
+                        if aggr_and_feedback_total_time > max_aggr_time:
+                            max_aggr_time = aggr_and_feedback_total_time
                         # finally, obtain the aggregate and associated feedback.
                         if leader.online_switcher():
                             leader.obtain_aggr_and_feedback(centroids, feedback, idx)
@@ -549,6 +567,7 @@ if __name__ == '__main__':
 
         # Determine the arrival order of proposed blocks.
         block_arrival_queue = {}
+        max_proposal_time = 0  # including transmission
         for leader in leaders_this_round:
             if args['committee_member_block_wait_time']:
                 for comm_member in leader.return_online_committee_members():
@@ -560,6 +579,10 @@ if __name__ == '__main__':
                         block_size = getsizeof(block)
                         transmission_delay = block_size / lower_link_speed
                         total_block_time = block_time + transmission_delay
+
+                        if total_block_time > max_proposal_time:
+                            max_proposal_time = total_block_time
+                        # finally, send the proposal block.
                         if total_block_time < comm_member.return_block_wait_time():
                             if comm_member.online_switcher():
                                 comm_member.add_to_candidate_blocks(block, total_block_time)
@@ -577,6 +600,10 @@ if __name__ == '__main__':
                         block_size = getsizeof(block)
                         transmission_delay = block_size / lower_link_speed
                         total_block_time = block_time + transmission_delay
+
+                        if total_block_time > max_proposal_time:
+                            max_proposal_time = total_block_time
+                        # finally, send the proposal block.
                         if comm_member.online_switcher():
                             comm_member.add_to_candidate_blocks(block, total_block_time)
                             if total_block_time not in block_arrival_queue:
@@ -608,7 +635,7 @@ if __name__ == '__main__':
                                       "an average ""silhouette score of " +
                                       str(comm_member.validate_update(centroids_to_check)) + " was found.")
                                 vote = comm_member.approve_block(candidate_block)
-                                time_to_vote = comm_member.return_validation_time()
+                                time_to_vote = comm_member.return_block_validation_time()
                                 if vote:
                                     leader_idx = candidate_block.get_produced_by()
                                     votes[time_to_vote] = [vote, comm_member.return_idx(), leader_idx]
@@ -634,11 +661,15 @@ if __name__ == '__main__':
                             transmission_delay = vote_size / lower_link_speed
                             final_vote_order[transmission_delay + vote_time] = vote
         final_vote_order = dict(sorted(final_vote_order.items()))
+        # maximum time can be retrieved by taking the last item of the final_vote_order keys.
+        latest_vote_cast_time = list(final_vote_order.keys())[-1] if len(list(final_vote_order.keys())) > 0 else 0
+        print(f"Latest time that a vote was cast was after {latest_vote_cast_time} seconds.")
 
         # Counting stage!
         # A vote is a pair [0] contains the message, [1] contains the committee idx, [2] contains the leader idx.
         winning_block = False
         winner = None
+        block_completion_time = 0
         for vote_time, vote in final_vote_order.items():
             msg = vote[0]
             comm_member_idx = vote[1]
@@ -656,13 +687,18 @@ if __name__ == '__main__':
                                 winning_block = True
                                 winner = leader
                                 winner.serialize_votes()
+                                block_completion_time = vote_time
                                 print(f"{leader_idx} was the first to receive a majority vote for their block.")
                                 break
 
         # vii. leader that obtained a majority vote append their block to their chain and propagate it to all
         # committee members. Afterward, committee members request their peers to download the winning block.
+        total_broadcast_delay = 0  # defining broadcast and propagation delays here because it is not reachable
+        total_propagation_delay = 0  # by parallel_time_estimate (computation) otherwise.
         if winning_block:
-            # check whether there is a centroid which was not updated.
+            # check whether there is a centroid which was not updated. We do not want to reinitialize in case the
+            # data is not distributed IID as it could be the case that by chance no data owners were selected having
+            # data on a specific centroid.
             if any(winner.return_deltas()) == 0.0 and num_reinitialized < args['num_reinitialize']:
                 print("We should re-initialize the centroids because at least one centroid was not updated.")
                 init_centroids = KMeans.randomly_init_centroid_range(bounds, n_dims, n_clusters)
@@ -711,7 +747,6 @@ if __name__ == '__main__':
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
                     comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
-                    # ToDo: ask whether this suffices for the simulation, or whether stop requests should be handled.
         else:
             # check whether it holds for all leaders that any(leader.return_deltas()) == 0.0, then reinit.
             deltas_list = []
@@ -756,10 +791,18 @@ if __name__ == '__main__':
 
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
+        print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+                       f"{parallel_time_estimate} seconds. \n")
         time_taken_per_round.append(comm_round_time_taken)
+        parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
+                                 latest_vote_cast_time + block_completion_time + total_propagation_delay + \
+                                 total_broadcast_delay
+        est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
         with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
             file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
+            file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+                       f"{parallel_time_estimate} seconds. \n")
             silhouette_scores = []
             # Need to treat the dataset as a global dataset to be able to compare with centralized and federated k-means
             global_dataset = []
@@ -812,16 +855,27 @@ if __name__ == '__main__':
         with open(f"{bc_folder}/round_{comm_round}_block_{block.index}.json", 'a') as file:
             json_block = block.toJSON()
             file.write(json_block)
-        # ToDo: figure out how to convert json-dumped blocks back to a Blockchain.
 
     print(f"Total time spent performing {total_comm_rounds} rounds: {sum(time_taken_per_round)} seconds.")
+    print(f"Estimate if all devices ran in parallel during {total_comm_rounds} rounds: "
+          f"{sum(est_time_taken_parallel_per_round)} seconds.")
 
     # Plot time taken per round.
     plt.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
+    plt.title('Time taken per communication round')
     plt.xlabel('Round number')
     plt.ylabel('Time taken (s)')
     plt.ylim([0.25, 3])
     plt.savefig(fname=f"{log_folder_path}/time_per_round.png")
+    plt.show()
+
+    # Same thing, but for the estimate of time it would take if this were a real distributed system.
+    plt.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
+    plt.title('Estimate of time taken (real distributed system)')
+    plt.xlabel('Round number')
+    plt.ylabel('Time taken (s)')
+    plt.ylim([0.25, 3])
+    plt.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png")
     plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
@@ -831,7 +885,11 @@ if __name__ == '__main__':
     for device in device_list:
         plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
     colors = ['purple', 'orange', 'cyan']
-    for i in range(len(track_g_centroids) - 1):
+    # Plot the initial centroids separately.
+    for i in range(len(track_g_centroids[0])):
+        plt.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color='k', s=60)
+
+    for i in range(1, len(track_g_centroids) - 1):
         for j in range(len(track_g_centroids[0])):
             plt.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
 

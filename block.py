@@ -98,7 +98,6 @@ class Block:  # Can put block as a dictionary. Though data should always be rese
         return self.vote_serialization
 
 
-# ToDo: improve function to build the Block s.t. it has the same object types as a block usually has.
 def fromJSON(jsonfile):
     # First, the parameters that must be filled.
     data, previous_hash, index, signature, produced_by, miner_pubkey = [], None, None, None, None, None

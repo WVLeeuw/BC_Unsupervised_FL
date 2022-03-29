@@ -97,6 +97,7 @@ class Device:
         self.fed_avg = fed_avg
         self.committee_validation_time = 0
         self.committee_aggregation_time = 0
+        self.committee_block_validation_time = 0
         self.candidate_blocks = []
         self.candidate_blocks_unordered = {}  # necessary for simulation, not reflective of real distributed system.
         self.candidate_blocks_ordered = {}
@@ -604,10 +605,10 @@ class Device:
         return self.candidate_blocks_ordered
 
     # approve block effectively produces a vote for said block.
-    # ToDo: test approve_block on blocks that are clearly illegal (reputation and contribution values).
     # Easiest way to do this is to have a malicious leader produce an illegal block,
     # then print it if approve_block fails.
     def approve_block(self, block):
+        start_time = time.time()
         msg = None
         recent_block_data = self.obtain_latest_block().get_data()
 
@@ -643,7 +644,12 @@ class Device:
 
         if validate_res and rep_check and contr_check:
             msg = [self.sign(block.get_hash()), self.return_idx(), self.return_rsa_pub_key(), dt.datetime.now()]
+
+        self.committee_block_validation_time = time.time() - start_time
         return msg
+
+    def return_block_validation_time(self):
+        return self.committee_block_validation_time
 
     def malicious_approve_block(self, block):
         msg = None
@@ -717,6 +723,7 @@ class Device:
         self.feedback_dicts = {}
         self.committee_validation_time = 0
         self.committee_aggregation_time = 0
+        self.committee_block_validation_time = 0
         self.obtained_local_centroids = []
         self.obtained_updates_unordered = {}
         self.updated_centroids = []
@@ -882,7 +889,7 @@ class Device:
         obtained_signatures = []
         vote_timestamps = []
         for vote in self.received_votes:
-            obtained_signatures.append(vote[0])  # ToDo: figure out whether to verify the signature, given key.
+            obtained_signatures.append(vote[0])
             vote_timestamps.append(vote[-1])
         serialized_votes = pickle.dumps(obtained_signatures)
         self.proposed_block.set_vote_serial(serialized_votes)
