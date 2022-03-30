@@ -64,8 +64,7 @@ parser.add_argument('-cmbt', '--committee_member_block_wait_time', type=float, d
                     help="time window during which committee member wait for block proposals to be sent. Wait time of "
                          "0.0 is associated with no time limit.")
 parser.add_argument('-cmh', '--committee_member_threshold', type=float, default=0.0,
-                    help="threshold value for the difference in performance to determine whether to consider a local "
-                         "update")
+                    help="threshold value for the difference in performance to determine whether to consider an update")
 parser.add_argument('-lwt', '--leader_wait_time', type=float, default=0.0,
                     help="time window during which leaders wait for committee members to send their resulting "
                          "aggregate after they obtained the local updates from data owners. Wait time of 0.0 is "
@@ -456,7 +455,7 @@ if __name__ == '__main__':
                                                f"{data_owner.return_idx()} {data_owner_is_malicious_node} local "
                                                f"silhouette score was {data_owner_silhouette} while the committee "
                                                f"member {comm_member.return_idx()} obtained a silhouette score of "
-                                               f"{comm_member_silhouette}. \n")
+                                               f"{comm_member_silhouette} \n")
                     else:
                         print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
                               f"offline.")
@@ -487,7 +486,7 @@ if __name__ == '__main__':
                                            f"{data_owner.return_idx()} {data_owner_is_malicious_node} local "
                                            f"silhouette score was {data_owner_silhouette} while the committee member "
                                            f"{comm_member.return_idx()} obtained a silhouette score of "
-                                           f"{comm_member_silhouette}. \n")
+                                           f"{comm_member_silhouette} \n")
                     else:
                         print(f"Data owner {data_owner.return_idx()} is unable to perform local update due to being "
                               f"offline.")
@@ -582,7 +581,7 @@ if __name__ == '__main__':
 
                         if total_block_time > max_proposal_time:
                             max_proposal_time = total_block_time
-                        # finally, send the proposal block.
+                        # finally, send the proposed block.
                         if total_block_time < comm_member.return_block_wait_time():
                             if comm_member.online_switcher():
                                 comm_member.add_to_candidate_blocks(block, total_block_time)
@@ -603,7 +602,7 @@ if __name__ == '__main__':
 
                         if total_block_time > max_proposal_time:
                             max_proposal_time = total_block_time
-                        # finally, send the proposal block.
+                        # finally, send the proposed block.
                         if comm_member.online_switcher():
                             comm_member.add_to_candidate_blocks(block, total_block_time)
                             if total_block_time not in block_arrival_queue:
@@ -740,10 +739,12 @@ if __name__ == '__main__':
                           f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
                           f"to communicate the winning block with their peers.")
                 track_g_centroids.append(winner.retrieve_global_centroids())
+                is_malicious_node = "M" if winner.return_is_malicious() else "B"
                 with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
                     file.write(f"Updated global centroids are: {winner.retrieve_global_centroids()}.\n")
                     file.write(f"Deltas (Euclidean distance) between previous centroids and new centroids are: "
                                f"{winner.return_deltas()}.\n")
+                    file.write(f"Winner's alignment was {is_malicious_node}. \n")
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
                     comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
@@ -818,9 +819,9 @@ if __name__ == '__main__':
                                           max_iter=1)
             cluster_labels = global_model.fit_predict(global_dataset)
             file.write(f"Combining the local datasets into one produces a silhouette score of: "
-                       f"{silhouette_score(global_dataset, cluster_labels)}. \n")
+                       f"{silhouette_score(global_dataset, cluster_labels)} \n")
             file.write(f"Combining the local datasets into one produces a Davies-Bouldin score of: "
-                       f"{davies_bouldin_score(global_dataset, cluster_labels)}. \n")
+                       f"{davies_bouldin_score(global_dataset, cluster_labels)} \n")
             file.write(f"Number of leaders this round: {len(leaders_this_round)}, \n"
                        f"Number of committee members this round: {len(committee_members_this_round)}, \n"
                        f"Number of data owners this round: {len(data_owners_this_round)}. \n")
@@ -832,11 +833,11 @@ if __name__ == '__main__':
                 # N.B. whether the node is malicious does not seem relevant to be logged here.
                 is_malicious_node = "M" if device.return_is_malicious() else "B"
                 file.write(f"{device.return_idx()} {device.return_role()} {is_malicious_node}: "
-                           f"{silhouette_this_round}. \n")
+                           f"{silhouette_this_round} \n")
             with open(f"{log_folder_path_comm_round}/silhouette_aggr_round_{comm_round + 1}.txt", 'a') as file:
                 if device.return_role() == 'committee' and len(device.updated_centroids) > 0:
                     file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids} achieving a "
-                               f"silhouette score of {device.validate_update(np.asarray(device.updated_centroids))}. "
+                               f"silhouette score of {device.validate_update(np.asarray(device.updated_centroids))} "
                                f"\n")
                 elif device.return_role() == 'committee':
                     file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids}. \n")
@@ -887,7 +888,8 @@ if __name__ == '__main__':
     colors = ['purple', 'orange', 'cyan']
     # Plot the initial centroids separately.
     for i in range(len(track_g_centroids[0])):
-        plt.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color='k', s=60)
+        plt.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
+                    edgecolors='k')
 
     for i in range(1, len(track_g_centroids) - 1):
         for j in range(len(track_g_centroids[0])):
@@ -895,7 +897,8 @@ if __name__ == '__main__':
 
     # Plot the last centroids separately.
     for i in range(len(track_g_centroids[-1])):
-        plt.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color='k', s=100)
+        plt.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
+                    edgecolors='k')
     plt.savefig(fname=f"{log_folder_path}/clustering.png")
     plt.show()
 
