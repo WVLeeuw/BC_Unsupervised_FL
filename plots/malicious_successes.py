@@ -5,15 +5,13 @@ import block
 from blockchain import Blockchain
 import json
 
-log_folders = ['03302022_180233']
-
-# ToDo: rewrite this to be able to obtain the mal_indices per run. Have the y-axis correspond to the (different) runs.
-# i.e. y_axis_labels = ['run_1', 'run_2'] etc. As VBFL did it.
+log_folders = ['4_malicious', '6_malicious', '8_malicious', '10_malicious', '11_malicious']
 
 # Plot, for the provided log folder, the rounds (i.e. scatter) in which a malicious leader managed to have
 # their block added to the chain.
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):
+    print(f"Now checking {log_folders[i]}...")
     cur_dir = os.listdir(f'../logs/{log_folders[i]}')
     for f in cur_dir:
         if 'comm_' in f:
@@ -49,5 +47,20 @@ for i in range(len(log_folders)):
                 if 'M' in line:
                     indices_mal_winner.append(j)
     indices_per_folder.append(indices_mal_winner)
+
+fig, ax = plt.subplots(1, 1)
+colors = ['purple', 'orange', 'magenta', 'green', 'cyan']
+
+for i in range(len(indices_per_folder)):
+    ax.plot(indices_per_folder[i], [log_folders[i] for j in range(len(indices_per_folder[i]))],
+            marker='o', color=colors[i], mfc='none', linestyle='None')
+
+ax.set_title('Round numbers corresponding with malicious leader successes.')
+# ax.set_ylabel('Log folder')
+ax.set_yticks([])
+ax.set_xlabel('Round numbers')
+ax.set_xlim([0, max(max_rounds) + 1])
+ax.legend(log_folders)
+plt.show()
 
 print(all_mal_devices, indices_per_folder)

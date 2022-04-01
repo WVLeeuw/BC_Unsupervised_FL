@@ -205,7 +205,7 @@ def obtain_bounds_multiple(dfs):
 
 
 def create_dummy_data(dims=1, clients_per_cluster=10, samples_each=10, clusters=10, scale=.5, verbose=False):
-    np.random.seed(420000)
+    np.random.seed(42)  # 42, 420, 4200, 42000, 420000 = 5 runs.
     num_clients = clients_per_cluster * clusters
     print(f"Number of clients set to: {num_clients}.")
     # create gaussian data set, per client one mean

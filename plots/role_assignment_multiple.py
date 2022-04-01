@@ -3,8 +3,7 @@ import sys
 import os
 
 # log_folder = sys.argv[1]
-log_folders = ['03302022_113324', '03302022_113639', '03302022_114706', '03302022_114930', '03302022_115142',
-               '03302022_115437', '03302022_115701', '03302022_115946', '03302022_120330', '03302022_120557']
+log_folders = ['loosely']  # , 'somewhat', 'loosely'
 
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):

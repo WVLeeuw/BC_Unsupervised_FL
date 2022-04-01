@@ -2,10 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-# log_folder = sys.argv[1]
-log_folders = ['03302022_164318', '03302022_164635', '03302022_164958']
-# ['03302022_113324', '03302022_113639', '03302022_114706', '03302022_114930', '03302022_115142', '03302022_115437',
-# '03302022_115701', '03302022_115946', '03302022_120330', '03302022_120557']
+log_folders = ['03312022_201510', '03312022_200231']
 
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):
@@ -43,7 +40,7 @@ for i in range(len(log_folders)):
     silhouette_avgs.append(silhouette_avg)
     davies_bouldin_scores.append(davies_bouldin)
 
-colors = ['green', 'purple', 'orange']
+colors = ['green', 'purple', 'orange', 'magenta']
 print(len(silhouette_avgs), len(davies_bouldin_scores))  # sanity check.
 
 fig = plt.figure(figsize=(8, 8))
@@ -54,6 +51,7 @@ for i in range(len(log_folders)):
 ax1.set_title('Performance over time in terms of global model silhouette score.')
 ax1.set_ylabel('silhouette score')
 ax1.set_ylim([-1, 1])
+ax1.legend(log_folders)
 
 for i in range(len(log_folders)):
     ax2.plot(range(1, max_rounds[i]+1), davies_bouldin_scores[i], color=colors[i])
@@ -61,6 +59,7 @@ ax2.set_title('Performance over time in terms of global model Davies-Bouldin sco
 ax2.set_xlabel('round number')
 ax2.set_ylabel('Davies-Bouldin score')
 ax2.set_ylim([0, 2])
+ax2.legend(log_folders)
 
 plt.show()
 

@@ -348,8 +348,8 @@ class Device:
         # Build a new (local) model using the centroids.
         if self.elbow < g_centroids.shape[0]:  # less local centroids than global centroids
             nearest_g_centroids = []
-            for centroid in self.local_centroids:
-                nearest_g_centroids.append(self.find_nearest_global_centroid(centroid))
+            for i in range(self.elbow):  # enforces that the choice of local centroids is kept dependent on elbow.
+                nearest_g_centroids.append(self.find_nearest_global_centroid(self.local_centroids[i]))
             self.model = cluster.KMeans(n_clusters=self.elbow, init=np.asarray(nearest_g_centroids), n_init=1,
                                         max_iter=self.local_epochs)
         else:  # simply copy the global centroids
@@ -667,7 +667,7 @@ class Device:
                 sender_is_leader = True
 
         # If it is not a genesis block or a re-init block.
-        if propagated_block.get_vote_serial():
+        if propagated_block.get_vote_serial() and self.approve_block(propagated_block):
             enough_votes = False
             len_vote_serial = len(propagated_block.get_vote_serial())
             len_vote = len(pickle.dumps(self.approve_block(propagated_block)[0]))

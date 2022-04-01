@@ -13,9 +13,10 @@ from datetime import datetime
 from sys import getsizeof
 
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 from sklearn import cluster
-from sklearn.metrics import silhouette_score, davies_bouldin_score
+from sklearn.metrics import silhouette_score, silhouette_samples, davies_bouldin_score
 
 import KMeans
 from blockchain import Blockchain
@@ -694,6 +695,7 @@ if __name__ == '__main__':
         # committee members. Afterward, committee members request their peers to download the winning block.
         total_broadcast_delay = 0  # defining broadcast and propagation delays here because it is not reachable
         total_propagation_delay = 0  # by parallel_time_estimate (computation) otherwise.
+        re_init_event = False
         if winning_block:
             # check whether there is a centroid which was not updated. We do not want to reinitialize in case the
             # data is not distributed IID as it could be the case that by chance no data owners were selected having
@@ -713,16 +715,15 @@ if __name__ == '__main__':
                 for device in device_list:
                     # have each device reinitialize their kmeans model after reinitialization of centroids.
                     device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
+
+                # Delete all logged folders from previous communication rounds if a re-init occurred.
+                re_init_event = True
+                for i in range(1, comm_round + 2):
+                    comm_round_file_path = f"{log_folder_path}/comm_{i}/"
+                    if os.path.exists(log_folder_path):
+                        shutil.rmtree(comm_round_file_path)
                 num_reinitialized += 1
                 comm_round = 0  # finally, reset communication round to 0.
-                if args['verbose']:
-                    for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
-                        print(str(block), '\n')
-                    print(
-                        f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
-                        f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
-                        f"to communicate the winning block with their peers.")
-                break
             elif winner.request_final_block_verification():
                 winner.add_block(winner.return_proposed_block())
                 total_propagation_delay = winner.propagate_block(winner.return_proposed_block())
@@ -779,70 +780,78 @@ if __name__ == '__main__':
                 for device in device_list:
                     # have each device reinitialize their kmeans model after reinitialization of centroids.
                     device.initialize_kmeans_model(n_dims=n_dims, n_clusters=device.elbow_method())
+
+                # Delete all logged folders from previous communication rounds if a re-init occurred.
+                re_init_event = True
+                for i in range(1, comm_round + 2):
+                    comm_round_file_path = f"{log_folder_path}/comm_{i}/"
+                    if os.path.exists(log_folder_path):
+                        shutil.rmtree(comm_round_file_path)
                 num_reinitialized += 1
                 comm_round = 0  # finally, reset communication round to 0.
-                if args['verbose']:
-                    for block in device_list[-1].blockchain.get_chain_structure()[-2:]:
-                        print(str(block), '\n')
-                    print(
-                        f"Took {total_propagation_delay} seconds to propagate the winning block to each committee "
-                        f"member, whereafter it took the committee members another {total_broadcast_delay} seconds "
-                        f"to communicate the winning block with their peers.")
+
             num_rounds_no_winner += 1
 
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
-        print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-                       f"{parallel_time_estimate} seconds. \n")
         time_taken_per_round.append(comm_round_time_taken)
         parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
                                  latest_vote_cast_time + block_completion_time + total_propagation_delay + \
                                  total_broadcast_delay
+        print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+              f"{parallel_time_estimate} seconds. \n")
         est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
-        with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
-            file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
-            file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-                       f"{parallel_time_estimate} seconds. \n")
-            silhouette_scores = []
-            # Need to treat the dataset as a global dataset to be able to compare with centralized and federated k-means
-            global_dataset = []
-            global_centroids = device_list[-1].retrieve_global_centroids()
+        if not re_init_event:
+            with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
+                file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
+                file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+                           f"{parallel_time_estimate} seconds. \n")
+                silhouette_scores = []
+                # Need to treat the dataset as a global dataset to be able to compare with centralized and
+                # federated k-means
+                global_dataset = []
+                longest_chain_len = 0
+                device_longest_chain = device_list[-1]
+                for device in device_list:
+                    if device.return_blockchain_obj().get_chain_length() > longest_chain_len:
+                        longest_chain_len = device.return_blockchain_obj().get_chain_length()
+                        device_longest_chain = device
+                    silhouette_scores.append(device.validate_update(device.retrieve_global_centroids()))
+                    global_dataset.append(device.dataset)
+                file.write(f"Current average silhouette score across all devices: "
+                           f"{sum(silhouette_scores) / len(silhouette_scores)}. \n")
+                # Log the silhouette score if we were treating the combined datasets as a single dataset.
+                global_centroids = device_longest_chain.retrieve_global_centroids()
+                global_dataset = np.asarray([record for sublist in global_dataset for record in sublist])
+                global_model = cluster.KMeans(n_clusters=global_centroids.shape[0], init=global_centroids, n_init=1,
+                                              max_iter=1)
+                cluster_labels = global_model.fit_predict(global_dataset)
+                file.write(f"Combining the local datasets into one produces a silhouette score of: "
+                           f"{silhouette_score(global_dataset, cluster_labels)} \n")
+                file.write(f"Combining the local datasets into one produces a Davies-Bouldin score of: "
+                           f"{davies_bouldin_score(global_dataset, cluster_labels)} \n")
+                file.write(f"Number of leaders this round: {len(leaders_this_round)}, \n"
+                           f"Number of committee members this round: {len(committee_members_this_round)}, \n"
+                           f"Number of data owners this round: {len(data_owners_this_round)}. \n")
+
+            # log silhouette per device, also do this for aggregates at committee members.
             for device in device_list:
-                silhouette_scores.append(device.validate_update(device.retrieve_global_centroids()))
-                global_dataset.append(device.dataset)
-            file.write(f"Current average silhouette score across all devices: "
-                       f"{sum(silhouette_scores) / len(silhouette_scores)}. \n")
-            # Log the silhouette score if we were treating the combined datasets as a single dataset.
-            global_dataset = np.asarray([record for sublist in global_dataset for record in sublist])
-            global_model = cluster.KMeans(n_clusters=global_centroids.shape[0], init=global_centroids, n_init=1,
-                                          max_iter=1)
-            cluster_labels = global_model.fit_predict(global_dataset)
-            file.write(f"Combining the local datasets into one produces a silhouette score of: "
-                       f"{silhouette_score(global_dataset, cluster_labels)} \n")
-            file.write(f"Combining the local datasets into one produces a Davies-Bouldin score of: "
-                       f"{davies_bouldin_score(global_dataset, cluster_labels)} \n")
-            file.write(f"Number of leaders this round: {len(leaders_this_round)}, \n"
-                       f"Number of committee members this round: {len(committee_members_this_round)}, \n"
-                       f"Number of data owners this round: {len(data_owners_this_round)}. \n")
+                silhouette_this_round = device.validate_update(device.retrieve_global_centroids())
+                with open(f"{log_folder_path_comm_round}/silhouette_round_{comm_round + 1}.txt", 'a') as file:
+                    # N.B. whether the node is malicious does not seem relevant to be logged here.
+                    is_malicious_node = "M" if device.return_is_malicious() else "B"
+                    file.write(f"{device.return_idx()} {device.return_role()} {is_malicious_node}: "
+                               f"{silhouette_this_round} \n")
+                with open(f"{log_folder_path_comm_round}/silhouette_aggr_round_{comm_round + 1}.txt", 'a') as file:
+                    if device.return_role() == 'committee' and len(device.updated_centroids) > 0:
+                        file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids} achieving a "
+                                   f"silhouette score of {device.validate_update(np.asarray(device.updated_centroids))} "
+                                   f"\n")
+                    elif device.return_role() == 'committee':
+                        file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids}. \n")
 
-        # log silhouette per device, also do this for aggregates at committee members.
-        for device in device_list:
-            silhouette_this_round = device.validate_update(device.retrieve_global_centroids())
-            with open(f"{log_folder_path_comm_round}/silhouette_round_{comm_round + 1}.txt", 'a') as file:
-                # N.B. whether the node is malicious does not seem relevant to be logged here.
-                is_malicious_node = "M" if device.return_is_malicious() else "B"
-                file.write(f"{device.return_idx()} {device.return_role()} {is_malicious_node}: "
-                           f"{silhouette_this_round} \n")
-            with open(f"{log_folder_path_comm_round}/silhouette_aggr_round_{comm_round + 1}.txt", 'a') as file:
-                if device.return_role() == 'committee' and len(device.updated_centroids) > 0:
-                    file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids} achieving a "
-                               f"silhouette score of {device.validate_update(np.asarray(device.updated_centroids))} "
-                               f"\n")
-                elif device.return_role() == 'committee':
-                    file.write(f"{device.return_idx()} obtained aggregate {device.updated_centroids}. \n")
-
-        comm_round += 1  # finally, increment the round nr.
+            comm_round += 1  # finally, increment the round nr.
 
     # Log the blockchain after global learning is done, N.B. already did + 1
     with open(f"{bc_folder}/round_{comm_round}.txt", 'a') as file:
@@ -862,44 +871,112 @@ if __name__ == '__main__':
           f"{sum(est_time_taken_parallel_per_round)} seconds.")
 
     # Plot time taken per round.
-    plt.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
-    plt.title('Time taken per communication round')
-    plt.xlabel('Round number')
-    plt.ylabel('Time taken (s)')
-    plt.ylim([0.25, 3])
-    plt.savefig(fname=f"{log_folder_path}/time_per_round.png")
+    fig1, ax1 = plt.subplots(1, 1)
+    ax1.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
+    ax1.set_title('Time taken per communication round')
+    ax1.set_xlabel('Round number')
+    ax1.set_ylabel('Time taken (s)')
+    ax1.set_ylim([0.25, 3])
+    fig1.savefig(fname=f"{log_folder_path}/time_per_round.png")
     plt.show()
 
     # Same thing, but for the estimate of time it would take if this were a real distributed system.
-    plt.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
-    plt.title('Estimate of time taken (real distributed system)')
-    plt.xlabel('Round number')
-    plt.ylabel('Time taken (s)')
-    plt.ylim([0.25, 3])
-    plt.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png")
+    fig2, ax2 = plt.subplots(1, 1)
+    ax2.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
+    ax2.set_title('Estimate of time taken (real distributed system)')
+    ax2.set_xlabel('Round number')
+    ax2.set_ylabel('Time taken (s)')
+    ax2.set_ylim([0.25, 3])
+    fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png")
     plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
     print(f"Total number of centroids recorded: {len(track_g_centroids)}. \n"
           f"Should be the same as chain length (if not reinitialized): "
           f"{device_list[0].return_blockchain_obj().get_chain_length()}.")
+    fig3, ax3 = plt.subplots(1, 1)
     for device in device_list:
-        plt.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', alpha=.3)
+        ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
     colors = ['purple', 'orange', 'cyan']
     # Plot the initial centroids separately.
     for i in range(len(track_g_centroids[0])):
-        plt.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
+        ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
                     edgecolors='k')
 
     for i in range(1, len(track_g_centroids) - 1):
         for j in range(len(track_g_centroids[0])):
-            plt.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
+            ax3.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
 
     # Plot the last centroids separately.
     for i in range(len(track_g_centroids[-1])):
-        plt.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
+        ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
                     edgecolors='k')
-    plt.savefig(fname=f"{log_folder_path}/clustering.png")
+    fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png")
+    plt.show()
+
+    # Final clustering visualization
+    global_dataset = []
+    longest_chain_len = 0
+    device_longest_chain = device_list[-1]
+    for device in device_list:
+        if device.return_blockchain_obj().get_chain_length() > longest_chain_len:
+            longest_chain_len = device.return_blockchain_obj().get_chain_length()
+            device_longest_chain = device
+        silhouette_scores.append(device.validate_update(np.asarray(device.retrieve_global_centroids())))
+        global_dataset.append(device.dataset)
+    global_centroids = np.asarray(device_longest_chain.retrieve_global_centroids())
+    global_dataset = np.asarray([record for sublist in global_dataset for record in sublist])
+    global_model = cluster.KMeans(n_clusters=global_centroids.shape[0], init=global_centroids, n_init=1,
+                                  max_iter=1)
+    cluster_labels = global_model.fit_predict(global_dataset)
+
+    fig4, ax4 = plt.subplots(1, 1)
+    colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
+    ax4.scatter(global_dataset[:, 0], global_dataset[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')
+    ax4.scatter(global_centroids[:, 0], global_centroids[:, 1], marker='o', c='white', s=200, edgecolor='k')
+    for i, c in enumerate(global_centroids):
+        ax4.scatter(c[0], c[1], marker='$%d$' % i, s=50, edgecolor='k')
+    ax4.set_title("Visualization of clustered data.")
+    ax4.set_xlabel("Feature space of the 1st feature")
+    ax4.set_ylabel("Feature space of the 2nd feature")
+    fig4.savefig(fname=f"{log_folder_path}/final_clustering.png")
+    plt.show()
+
+    # Silhouette visualization (per cluster)
+    fig5, ax5 = plt.subplots(1, 1)
+    ax5.set_xlim([-.4, 1])
+    ax5.set_ylim([0, len(global_dataset) + (n_clusters + 1) * 10])
+    silhouette_avg = silhouette_score(global_dataset, cluster_labels)
+    silhouette_samples = silhouette_samples(global_dataset, cluster_labels)
+
+    y_lower = 10
+    for i in range(n_clusters):
+        ith_cluster_silhouette = silhouette_samples[cluster_labels == i]
+        ith_cluster_silhouette.sort()
+
+        ith_cluster_size = ith_cluster_silhouette.shape[0]
+        y_upper = y_lower + ith_cluster_size
+
+        color = cm.nipy_spectral(float(i) / n_clusters)
+        ax5.fill_betweenx(np.arange(y_lower, y_upper),
+                          0,
+                          ith_cluster_silhouette,
+                          facecolor=color,
+                          edgecolor=color,
+                          alpha=0.7)
+        ax5.text(-0.05, y_lower + 0.5 * ith_cluster_size, str(i))
+
+        # compute y_lower for next cluster
+        y_lower = y_upper + 10
+
+    ax5.set_title("The silhouette plot for the various clusters.")
+    ax5.set_xlabel("Silhouette coefficient values")
+    ax5.set_ylabel("Cluster label")
+
+    ax5.axvline(x=silhouette_avg, color='red', linestyle='--')  # vertical line to show silhouette avg
+    ax5.set_yticks([])  # no ticks on y-axis
+    ax5.set_xticks([-.4, -.2, 0, .2, .4, .6, .8, 1])
+    fig5.savefig(fname=f"{log_folder_path}/silhouette_analysis.png")
     plt.show()
 
     print(f"Total number of communication rounds: {total_comm_rounds}.")

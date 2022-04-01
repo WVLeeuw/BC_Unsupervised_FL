@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folder = '03302022_172717'
+log_folder = 'closely'
 
 # Plot, for the provided log folder, the local model performance for ONE device (selected at random)
 # vs. global model performance over n rounds.
@@ -48,11 +48,11 @@ colors = ['purple', 'orange']
 
 fig = plt.figure(figsize=(8, 6))
 ax = fig.subplots(1, 1)
-ax.plot(range(1, max_round + 1), local_silhouettes, color=colors[0], label='Local silhouettes')
-ax.plot(range(1, max_round + 1), global_silhouettes, color=colors[1], label='Global silhouettes')
+ax.plot(range(1, max_round + 1), local_silhouettes, color=colors[0], label='Local silhouette')
+ax.plot(range(1, max_round + 1), global_silhouettes, color=colors[1], label='Global silhouette')
 ax.set_title('Local and global model performance.')
-ax.set_ylabel('silhouette scores')
-ax.set_xlabel('round numbers')
+ax.set_ylabel('Silhouette score')
+ax.set_xlabel('Round number')
 ax.set_ylim([-1, 1])
 ax.legend()
 
