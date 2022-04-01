@@ -73,6 +73,8 @@ parser.add_argument('-lwt', '--leader_wait_time', type=float, default=0.0,
 parser.add_argument('-rfc', '--resume_from_chain', type=str, default=None,
                     help='resume the global learning process from an existing blockchain from the path of a saved '
                          'blockchain. Only provide the date.')
+parser.add_argument('-rs', '--reputation_system', type=int, default=1,
+                    help='whether to assign roles based on the reputation system.')
 
 # distributed system attributes
 parser.add_argument('-ns', '--network_stability', type=float, default=1.0, help='the odds of a device being and '
@@ -263,101 +265,126 @@ if __name__ == '__main__':
         # For each device, draw a sample from its beta distribution (dependent on its reputation),
         # moreover, use the contribution value to determine whether they can be a data owner during this round.
         # N.B. we assume that this sampling is done through smart contract at start of round.
-        latest_block_data = device_list[-1].obtain_latest_block().get_data()
-        pos_rep = latest_block_data['pos_reputation']
-        neg_rep = latest_block_data['neg_reputation']
-        contr_vals = latest_block_data['contribution']
-        contr_bounds = [contr_vals[min(contr_vals.keys(), key=(lambda k: contr_vals[k]))],
-                        contr_vals[max(contr_vals.keys(), key=(lambda k: contr_vals[k]))]]
-        print(f"Bounds of the contribution values this round are: {contr_bounds}")
-        eligible_comm_members = {}
-        eligible_leaders = {}
-        chosen_catch_up = []  # 10% probability that a device having (1, 1) reputation is chosen.
-        for device in device_list:
-            if device.return_idx() in pos_rep and device.return_idx() in neg_rep:
-                pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
-            else:  # initialize both to be 1 (as a new device must have just joined).
-                pos_count, neg_count = 1, 1
-            # pos_count == neg_count == 1 corresponds to new devices (in theory).
-            if pos_count == neg_count == 1:
-                # assign committee role with 10% probability.
-                if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
-                    chosen_catch_up.append(device.return_idx())
+        if args['reputation_system']:
+            latest_block_data = device_list[-1].obtain_latest_block().get_data()
+            pos_rep = latest_block_data['pos_reputation']
+            neg_rep = latest_block_data['neg_reputation']
+            contr_vals = latest_block_data['contribution']
+            contr_bounds = [contr_vals[min(contr_vals.keys(), key=(lambda k: contr_vals[k]))],
+                            contr_vals[max(contr_vals.keys(), key=(lambda k: contr_vals[k]))]]
+            print(f"Bounds of the contribution values this round are: {contr_bounds}")
+            eligible_comm_members = {}
+            eligible_leaders = {}
+            chosen_catch_up = []  # 10% probability that a device having (1, 1) reputation is chosen.
+            for device in device_list:
+                if device.return_idx() in pos_rep and device.return_idx() in neg_rep:
+                    pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
+                else:  # initialize both to be 1 (as a new device must have just joined).
+                    pos_count, neg_count = 1, 1
+                # pos_count == neg_count == 1 corresponds to new devices (in theory).
+                if pos_count == neg_count == 1:
+                    # assign committee role with 10% probability.
+                    if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
+                        chosen_catch_up.append(device.return_idx())
 
-            # check whether the device was a committee member in the previous round, not eligible otherwise.
-            if device.return_role() != 'committee':
-                eligible_comm_members[device.return_idx()] = np.random.beta(pos_count, neg_count)
-            # idem for leaders.
-            if device.return_role() != 'leader':
-                eligible_leaders[device.return_idx()] = np.random.beta(pos_count, neg_count)
+                # check whether the device was a committee member in the previous round, not eligible otherwise.
+                if device.return_role() != 'committee':
+                    eligible_comm_members[device.return_idx()] = np.random.beta(pos_count, neg_count)
+                # idem for leaders.
+                if device.return_role() != 'leader':
+                    eligible_leaders[device.return_idx()] = np.random.beta(pos_count, neg_count)
 
-        print(f"{len(chosen_catch_up)} device(s) were chosen to catch up!")
-        sorted_eligible_comm = {k: v for k, v in sorted(eligible_comm_members.items(), key=lambda item: item[1],
-                                                        reverse=True)}
-        eligible_comm_filtered = dict(list(sorted_eligible_comm.items())[:committee_members_to_assign])
-        # Extract the keys, remove keys if there were devices selected to 'catch up'.
-        eligible_comm_keys = list(eligible_comm_filtered.keys())
-        sorted_eligible_leaders = {k: v for k, v in sorted(eligible_leaders.items(), key=lambda item: item[1],
-                                                           reverse=True)}
-        eligible_leaders_filtered = dict(list(sorted_eligible_leaders.items())[:leaders_to_assign])
-        eligible_leaders_keys = list(eligible_leaders_filtered.keys())
+            print(f"{len(chosen_catch_up)} device(s) were chosen to catch up!")
+            sorted_eligible_comm = {k: v for k, v in sorted(eligible_comm_members.items(), key=lambda item: item[1],
+                                                            reverse=True)}
+            eligible_comm_filtered = dict(list(sorted_eligible_comm.items())[:committee_members_to_assign])
+            # Extract the keys, remove keys if there were devices selected to 'catch up'.
+            eligible_comm_keys = list(eligible_comm_filtered.keys())
+            sorted_eligible_leaders = {k: v for k, v in sorted(eligible_leaders.items(), key=lambda item: item[1],
+                                                               reverse=True)}
+            eligible_leaders_filtered = dict(list(sorted_eligible_leaders.items())[:leaders_to_assign])
+            eligible_leaders_keys = list(eligible_leaders_filtered.keys())
 
-        random.shuffle(eligible_comm_keys)
-        random.shuffle(eligible_leaders_keys)
+            random.shuffle(eligible_comm_keys)
+            random.shuffle(eligible_leaders_keys)
 
-        # reset the device's role from previous round, assign previously drawn devices (from sampling) first.
-        for device in device_list:
-            device.reset_role()
-            if device.return_idx() in chosen_catch_up:
-                if committee_members_to_assign:
+            # reset the device's role from previous round, assign previously drawn devices (from sampling) first.
+            for device in device_list:
+                device.reset_role()
+                if device.return_idx() in chosen_catch_up and committee_members_to_assign:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
 
-            elif device.return_idx() in eligible_leaders_keys:
-                if leaders_to_assign:
+                elif device.return_idx() in eligible_leaders_keys:
+                    if leaders_to_assign:
+                        device.assign_leader_role()
+                        leaders_to_assign -= 1
+                elif device.return_idx() in eligible_comm_keys:
+                    if committee_members_to_assign:
+                        device.assign_committee_role()
+                        committee_members_to_assign -= 1
+
+                # Done assigning committee members and leaders, adding them to their respective lists.
+                if device.return_role() == "leader":
+                    leaders_this_round.append(device)
+                if device.return_role() == "committee":
+                    committee_members_this_round.append(device)
+
+            still_unassigned = [device for device in device_list if not device.return_role()]
+            if contr_bounds[0] < 0.0:
+                for device in still_unassigned:
+                    if data_owners_to_assign:
+                        contr_range = abs(contr_bounds[1] - contr_bounds[0])
+                        # Exclude the bottom 25% of contributors if there are negative contribution values.
+                        if device.return_idx() in contr_vals:
+                            if contr_vals[device.return_idx()] > contr_bounds[0] + .25 * contr_range:
+                                device.assign_data_role()
+                                data_owners_to_assign -= 1
+                            # And have each device has a 10% chance otherwise to be picked to 'catch up'.
+                            elif random.random() > 0.9:
+                                print(f"{device.return_idx()} has been chosen to provide an update even though "
+                                      f"their contribution and/or reputation is poor.")
+                                device.assign_data_role()
+                                data_owners_to_assign -= 1
+                        elif random.random() > 0.9:  # reached if a new device has just joined.
+                            device.assign_data_role()
+                            data_owners_to_assign -= 1
+                    if device.return_role() == 'data owner':
+                        data_owners_this_round.append(device)
+            else:  # every device must have positive contribution -- no filtering required.
+                for device in still_unassigned:
+                    if data_owners_to_assign:
+                        device.assign_data_role()
+                        data_owners_to_assign -= 1
+                        data_owners_this_round.append(device)
+
+        else:  # do random assignment
+            # check if the devices are eligible to be either leader or committee
+            eligible_leaders = [device for device in device_list if device.return_role() != 'leader']
+            eligible_committee = [device for device in device_list if device.return_role() != 'committee']
+            # shuffle the device list to simulate random assignments
+            random.shuffle(device_list)
+            for device in device_list:
+                if leaders_to_assign and device in eligible_leaders:
                     device.assign_leader_role()
                     leaders_to_assign -= 1
-            elif device.return_idx() in eligible_comm_keys:
-                if committee_members_to_assign:
+                elif committee_members_to_assign and device in eligible_committee:
                     device.assign_committee_role()
                     committee_members_to_assign -= 1
-
-            # Done assigning committee members and leaders, adding them to their respective lists.
-            if device.return_role() == "leader":
-                leaders_this_round.append(device)
-            if device.return_role() == "committee":
-                committee_members_this_round.append(device)
-
-            # Check whether the remaining devices have high enough contribution to be selected as data owner.
-            if data_owners_to_assign and contr_bounds[0] < 0.0 and not device.return_role():
-                contr_range = abs(contr_bounds[1] - contr_bounds[0])
-                # Exclude the bottom 25% of contributors if there are negative contribution values.
-                if device.return_idx() in contr_vals:
-                    if contr_vals[device.return_idx()] > contr_bounds[0] + .25 * contr_range:
-                        device.assign_data_role()
-                        data_owners_to_assign -= 1
-                    # And have each device has a 10% chance otherwise to be picked to 'catch up'.
-                    elif random.random() > 0.9:
-                        print(
-                            f"{device.return_idx()} has been chosen to provide an update even though their contribution "
-                            f"and/or reputation is poor.")
-                        device.assign_data_role()
-                        data_owners_to_assign -= 1
-                elif not device.return_role():  # a new device must have just joined.
-                    if random.random() > 0.9:
-                        device.assign_data_role()
-                        data_owners_to_assign -= 1
-            # if there are no devices that have contributed negatively, we can assign any device.
-            elif data_owners_to_assign and not device.return_role():
-                if not device.return_role():
+                elif data_owners_to_assign:
                     device.assign_data_role()
                     data_owners_to_assign -= 1
 
-            # Add data owners to the list of data owners.
-            if device.return_role() == "data owner":
-                data_owners_this_round.append(device)
+                # Done assigning devices, adding them to their respective lists.
+                if device.return_role() == "leader":
+                    leaders_this_round.append(device)
+                if device.return_role() == "committee":
+                    committee_members_this_round.append(device)
+                if device.return_role() == "data owner":
+                    data_owners_this_round.append(device)
 
-            # finally, check whether the devices are online.
+        # finally, check whether the devices are online.
+        for device in device_list:
             device.online_switcher()
 
         # log roles assigned for the devices, along with their reputation and contribution values.
@@ -393,6 +420,7 @@ if __name__ == '__main__':
             leader.reset_vars_leader()
 
         role_assignment_time = time.time() - comm_round_start_time
+        print(f"Assigning roles took {role_assignment_time} seconds.")
 
         # ii. obtain most recent block and perform local learning step and share result with associated committee member
         for device in data_owners_this_round:
@@ -876,7 +904,7 @@ if __name__ == '__main__':
     ax1.set_title('Time taken per communication round')
     ax1.set_xlabel('Round number')
     ax1.set_ylabel('Time taken (s)')
-    ax1.set_ylim([0.25, 3])
+    ax1.set_ylim([0.0, 4])
     fig1.savefig(fname=f"{log_folder_path}/time_per_round.png")
     plt.show()
 
@@ -886,7 +914,7 @@ if __name__ == '__main__':
     ax2.set_title('Estimate of time taken (real distributed system)')
     ax2.set_xlabel('Round number')
     ax2.set_ylabel('Time taken (s)')
-    ax2.set_ylim([0.25, 3])
+    ax2.set_ylim([0.0, 4])
     fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png")
     plt.show()
 
