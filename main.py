@@ -905,7 +905,7 @@ if __name__ == '__main__':
     ax1.set_xlabel('Round number')
     ax1.set_ylabel('Time taken (s)')
     ax1.set_ylim([0.0, 4])
-    fig1.savefig(fname=f"{log_folder_path}/time_per_round.png")
+    fig1.savefig(fname=f"{log_folder_path}/time_per_round.png", dpi=600, bbox_inches='tight')
     plt.show()
 
     # Same thing, but for the estimate of time it would take if this were a real distributed system.
@@ -915,7 +915,7 @@ if __name__ == '__main__':
     ax2.set_xlabel('Round number')
     ax2.set_ylabel('Time taken (s)')
     ax2.set_ylim([0.0, 4])
-    fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png")
+    fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png", dpi=600, bbox_inches='tight')
     plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
@@ -939,7 +939,7 @@ if __name__ == '__main__':
     for i in range(len(track_g_centroids[-1])):
         ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
                     edgecolors='k')
-    fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png")
+    fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
     plt.show()
 
     # Final clustering visualization
@@ -967,7 +967,7 @@ if __name__ == '__main__':
     ax4.set_title("Visualization of clustered data.")
     ax4.set_xlabel("Feature space of the 1st feature")
     ax4.set_ylabel("Feature space of the 2nd feature")
-    fig4.savefig(fname=f"{log_folder_path}/final_clustering.png")
+    fig4.savefig(fname=f"{log_folder_path}/final_clustering.png", dpi=600, bbox_inches='tight')
     plt.show()
 
     # Silhouette visualization (per cluster)
@@ -992,19 +992,19 @@ if __name__ == '__main__':
                           facecolor=color,
                           edgecolor=color,
                           alpha=0.7)
-        ax5.text(-0.05, y_lower + 0.5 * ith_cluster_size, str(i))
+        # ax5.text(-0.05, y_lower + 0.5 * ith_cluster_size, str(i))
 
         # compute y_lower for next cluster
         y_lower = y_upper + 10
 
-    ax5.set_title("The silhouette plot for the various clusters.")
-    ax5.set_xlabel("Silhouette coefficient values")
-    ax5.set_ylabel("Cluster label")
-
-    ax5.axvline(x=silhouette_avg, color='red', linestyle='--')  # vertical line to show silhouette avg
+    ax5.set_title("Silhouette plot for the various clusters.")
+    ax5.set_xlabel("Silhouette score")
+    ax5.set_ylabel("Records sorted by silhouette score per cluster")
+    ax5.axvline(x=silhouette_avg, color='red', linestyle='--', label='_nolegend_')  # vertical line to show avg
     ax5.set_yticks([])  # no ticks on y-axis
     ax5.set_xticks([-.4, -.2, 0, .2, .4, .6, .8, 1])
-    fig5.savefig(fname=f"{log_folder_path}/silhouette_analysis.png")
+    ax5.legend(range(n_clusters + 1))
+    fig5.savefig(fname=f"{log_folder_path}/silhouette_analysis.png", dpi=600, bbox_inches='tight')
     plt.show()
 
     print(f"Total number of communication rounds: {total_comm_rounds}.")

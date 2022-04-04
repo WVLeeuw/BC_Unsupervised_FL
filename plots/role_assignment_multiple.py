@@ -2,8 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-# log_folder = sys.argv[1]
-log_folders = ['loosely']  # , 'somewhat', 'loosely'
+log_folders = ['04042022_102601', '04042022_103057', '04042022_104125']
 
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):

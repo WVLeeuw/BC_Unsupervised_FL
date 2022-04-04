@@ -2,14 +2,12 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folder = 'closely'
+log_folder = 'IID'
 
 # Plot, for the provided log folder, the local model performance for ONE device (selected at random)
 # vs. global model performance over n rounds.
 
 dirs = os.listdir(f'../logs/{log_folder}')
-device_idx = '12'  # number between 1 and n for n the number of devices.
-cur_device = f'device_{device_idx}'
 
 max_round = 0
 for folder in dirs:
@@ -20,6 +18,15 @@ for folder in dirs:
             max_round = int(folder[-2:])
         else:
             max_round = 100
+
+# obtain no. devices during this execution.
+args_used_file = f'../logs/{log_folder}/args_used.txt'
+args_file = open(args_used_file, 'r')
+lines_args = args_file.read().split('\n')
+no_devices = 0
+for line in lines_args:
+    if 'num_devices' in line:
+        no_devices = int(line[-2:])  # take the last two characters and cast to int
 
 local_silhouettes = []
 global_silhouettes = []
@@ -32,9 +39,13 @@ for j in range(1, max_round + 1):
     info_file = open(round_info_file, 'r')
 
     lines_local = local_file.read().split('\n')
-    for line in lines_local:
-        if cur_device in line:
-            local_silhouettes.append(float(line.split(sep=':')[-1]))
+    round_scores = []
+    for i in range(1, no_devices + 1):
+        cur_device = f'device_{i}'
+        for line in lines_local:
+            if cur_device in line:
+                round_scores.append(float(line.split(sep=':')[-1]))
+    local_silhouettes.append(sum(round_scores)/len(round_scores))
 
     lines_info = info_file.read().split('\n')
     for line in lines_info:
@@ -48,7 +59,7 @@ colors = ['purple', 'orange']
 
 fig = plt.figure(figsize=(8, 6))
 ax = fig.subplots(1, 1)
-ax.plot(range(1, max_round + 1), local_silhouettes, color=colors[0], label='Local silhouette')
+ax.plot(range(1, max_round + 1), local_silhouettes, color=colors[0], label='Local silhouette (averaged)')
 ax.plot(range(1, max_round + 1), global_silhouettes, color=colors[1], label='Global silhouette')
 ax.set_title('Local and global model performance.')
 ax.set_ylabel('Silhouette score')
