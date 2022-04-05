@@ -250,7 +250,7 @@ if __name__ == '__main__':
         print(f"\nCommunication round {comm_round + 1}.")
 
         comm_round_start_time = time.time()  # to keep track how long communication rounds take.
-        parallel_time_estimate = 0  # to keep track of the time it would take if every device ran in parallel
+        # parallel_time_estimate = 0  # to keep track of the time it would take if every device ran in parallel
         total_comm_rounds += 1  # to keep track of the total nr of communication rounds.
 
         # i. assign roles to devices dependent on contribution and reputation
@@ -358,7 +358,7 @@ if __name__ == '__main__':
                         data_owners_to_assign -= 1
                         data_owners_this_round.append(device)
 
-        else:  # do random assignment
+        else:  # do random assignment, with caveat that devices cannot be leaders/committee in consecutive rounds.
             # check if the devices are eligible to be either leader or committee
             eligible_leaders = [device for device in device_list if device.return_role() != 'leader']
             eligible_committee = [device for device in device_list if device.return_role() != 'committee']
@@ -823,18 +823,18 @@ if __name__ == '__main__':
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
         time_taken_per_round.append(comm_round_time_taken)
-        parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
-                                 latest_vote_cast_time + block_completion_time + total_propagation_delay + \
-                                 total_broadcast_delay
-        print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-              f"{parallel_time_estimate} seconds. \n")
-        est_time_taken_parallel_per_round.append(parallel_time_estimate)
+        # parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
+        #                          latest_vote_cast_time + block_completion_time + total_propagation_delay + \
+        #                          total_broadcast_delay
+        # print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+        #       f"{parallel_time_estimate} seconds. \n")
+        # est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
         if not re_init_event:
             with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
                 file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
-                file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-                           f"{parallel_time_estimate} seconds. \n")
+                # file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+                #            f"{parallel_time_estimate} seconds. \n")
                 silhouette_scores = []
                 # Need to treat the dataset as a global dataset to be able to compare with centralized and
                 # federated k-means
@@ -895,8 +895,8 @@ if __name__ == '__main__':
             file.write(json_block)
 
     print(f"Total time spent performing {total_comm_rounds} rounds: {sum(time_taken_per_round)} seconds.")
-    print(f"Estimate if all devices ran in parallel during {total_comm_rounds} rounds: "
-          f"{sum(est_time_taken_parallel_per_round)} seconds.")
+    # print(f"Estimate if all devices ran in parallel during {total_comm_rounds} rounds: "
+    #       f"{sum(est_time_taken_parallel_per_round)} seconds.")
 
     # Plot time taken per round.
     fig1, ax1 = plt.subplots(1, 1)
@@ -909,14 +909,14 @@ if __name__ == '__main__':
     plt.show()
 
     # Same thing, but for the estimate of time it would take if this were a real distributed system.
-    fig2, ax2 = plt.subplots(1, 1)
-    ax2.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
-    ax2.set_title('Estimate of time taken (real distributed system)')
-    ax2.set_xlabel('Round number')
-    ax2.set_ylabel('Time taken (s)')
-    ax2.set_ylim([0.0, 4])
-    fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png", dpi=600, bbox_inches='tight')
-    plt.show()
+    # fig2, ax2 = plt.subplots(1, 1)
+    # ax2.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
+    # ax2.set_title('Estimate of time taken (real distributed system)')
+    # ax2.set_xlabel('Round number')
+    # ax2.set_ylabel('Time taken (s)')
+    # ax2.set_ylim([0.0, 4])
+    # fig2.savefig(fname=f"{log_folder_path}/est_parallel_time_taken.png", dpi=600, bbox_inches='tight')
+    # plt.show()
 
     # Plot data accompanied by the global centroids over time. N.B. How to show time progression for global centroids?
     print(f"Total number of centroids recorded: {len(track_g_centroids)}. \n"

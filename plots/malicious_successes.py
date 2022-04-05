@@ -5,7 +5,8 @@ import block
 from blockchain import Blockchain
 import json
 
-log_folders = ['04042022_102601', '04042022_103057', '04042022_104125']
+log_folders = ['51attack_rs0_1', '51attack_rs0_2', '51attack_rs0_3', '51attack_rs0_4', '51attack_rs0_5']
+fig_path = f'../logs/plots/'
 
 # Plot, for the provided log folder, the rounds (i.e. scatter) in which a malicious leader managed to have
 # their block added to the chain.
@@ -14,12 +15,13 @@ for i in range(len(log_folders)):
     cur_dir = os.listdir(f'../logs/{log_folders[i]}')
     for f in cur_dir:
         if 'comm_' in f:
-            if len(f) == 6:
-                max_rounds[i] = int(f[-1])
-            elif len(f) == 7:
-                max_rounds[i] = int(f[-2:])
-            else:
+            if len(f) > 7:
                 max_rounds[i] = 100
+            elif len(f) == 7:
+                if int(f[-2:]) > max_rounds[i]:
+                    max_rounds[i] = int(f[-2:])
+            elif int(f[-1]) > max_rounds[i]:
+                max_rounds[i] = int(f[-1])
 
 # Obtain the malicious devices from malicious_devices_comm_i.txt
 all_mal_devices = []
@@ -85,3 +87,8 @@ prop_mal_won = total_mal_won/total_mal_leaders
 
 print('Malicious devices won ' + ('%.2f' % (prop_mal_won * 100)) + '% of the time they were assigned to be a leader.')
 print('Malicious devices had a ' + ('%.2f' % (prop_mal_leader * 100)) + '% chance to be assigned leader.')
+
+with open(f'{fig_path}info/malicious_successes_51attack_rs0.txt', 'a') as f:
+    f.write('Malicious devices won ' + ('%.2f' % (prop_mal_won * 100)) +
+            '% of the time they were assigned to be a leader. \n')
+    f.write('Malicious devices had a ' + ('%.2f' % (prop_mal_leader * 100)) + '% chance to be assigned leader.')

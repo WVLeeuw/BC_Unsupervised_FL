@@ -7,17 +7,19 @@ log_folder = 'IID'
 # Plot, for the provided log folder, the local model performance for ONE device (selected at random)
 # vs. global model performance over n rounds.
 
+fig_path = f'../logs/plots/'
 dirs = os.listdir(f'../logs/{log_folder}')
 
 max_round = 0
 for folder in dirs:
     if 'comm_' in folder:
-        if len(folder) == 6:
-            max_round = int(folder[-1])
-        elif len(folder) == 7:
-            max_round = int(folder[-2:])
-        else:
+        if len(folder) > 7:
             max_round = 100
+        elif len(folder) == 7:
+            if int(folder[-2:]) > max_round:
+                max_round = int(folder[-2:])
+        elif len(folder) == 6:
+            max_round = int(folder[-1])
 
 # obtain no. devices during this execution.
 args_used_file = f'../logs/{log_folder}/args_used.txt'
@@ -67,4 +69,6 @@ ax.set_xlabel('Round number')
 ax.set_ylim([-1, 1])
 ax.legend()
 
+filename = 'local_vs_global_performance.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

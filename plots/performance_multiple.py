@@ -2,19 +2,21 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folders = ['04042022_102601', '04042022_103057', '04042022_104125']
+log_folders = ['loosely_1', 'loosely_2', 'loosely_3', 'loosely_4', 'loosely_5']
+fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):
     cur_dir = os.listdir(f'../logs/{log_folders[i]}')
     for f in cur_dir:
         if 'comm_' in f:
-            if len(f) == 6:
-                max_rounds[i] = int(f[-1])
-            elif len(f) == 7:
-                max_rounds[i] = int(f[-2:])
-            else:
+            if len(f) > 7:
                 max_rounds[i] = 100
+            elif len(f) == 7:
+                if int(f[-2:]) > max_rounds[i]:
+                    max_rounds[i] = int(f[-2:])
+            elif int(f[-1]) > max_rounds[i]:
+                max_rounds[i] = int(f[-1])
 
 total_rounds = sum(max_rounds)  # used to get the eventual proportions
 
@@ -40,7 +42,7 @@ for i in range(len(log_folders)):
     silhouette_avgs.append(silhouette_avg)
     davies_bouldin_scores.append(davies_bouldin)
 
-colors = ['green', 'purple', 'orange', 'magenta']
+colors = ['green', 'purple', 'orange', 'magenta', 'cyan']
 print(len(silhouette_avgs), len(davies_bouldin_scores))  # sanity check.
 
 fig = plt.figure(figsize=(8, 8))
@@ -61,6 +63,8 @@ ax2.set_ylabel('Davies-Bouldin score')
 ax2.set_ylim([0, 2])
 ax2.legend(log_folders)
 
+filename = 'performance.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 
 for i in range(len(silhouette_avgs)):

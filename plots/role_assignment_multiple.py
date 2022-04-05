@@ -2,19 +2,21 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folders = ['04042022_102601', '04042022_103057', '04042022_104125']
+log_folders = ['malicious_20_rs0_1', 'malicious_20_rs0_2', 'malicious_20_rs0_3', 'malicious_20_rs0_4', 'malicious_20_rs0_5']
+fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
 for i in range(len(log_folders)):
     cur_dir = os.listdir(f'../logs/{log_folders[i]}')
     for f in cur_dir:
         if 'comm_' in f:
-            if len(f) == 6:
-                max_rounds[i] = int(f[-1])
-            elif len(f) == 7:
-                max_rounds[i] = int(f[-2:])
-            else:
+            if len(f) > 7:
                 max_rounds[i] = 100
+            elif len(f) == 7:
+                if int(f[-2:]) > max_rounds[i]:
+                    max_rounds[i] = int(f[-2:])
+            elif int(f[-1]) > max_rounds[i]:
+                max_rounds[i] = int(f[-1])
 
 total_rounds = sum(max_rounds)  # used to get the eventual proportions
 
@@ -88,4 +90,6 @@ ax2.set_xlabel('roles')
 ax2.set_ylabel('proportion of rounds assigned')
 ax2.set_ylim([0, 1])
 
+filename = 'role_assignment_mal20_rs0.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
