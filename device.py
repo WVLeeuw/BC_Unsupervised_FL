@@ -384,7 +384,7 @@ class Device:
 
     # Used to retrieve good choice of k for local model.
     def elbow_method(self):
-        ks = range(2, 10)  # N.B. if this starts at 2, we return i + 1. If it starts at 1, we can return i.
+        ks = range(2, min(10, len(self.dataset)))
         inertias = []
         elbow_found = False
 
