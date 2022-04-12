@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folders = ['loosely_1', 'loosely_2', 'loosely_3', 'loosely_4', 'loosely_5']
+log_folders = ['04112022_161409', '04112022_173252']
 fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
@@ -53,7 +53,6 @@ for i in range(len(log_folders)):
 ax1.set_title('Performance over time in terms of global model silhouette score.')
 ax1.set_ylabel('silhouette score')
 ax1.set_ylim([-1, 1])
-ax1.legend(log_folders)
 
 for i in range(len(log_folders)):
     ax2.plot(range(1, max_rounds[i]+1), davies_bouldin_scores[i], color=colors[i])
@@ -61,9 +60,9 @@ ax2.set_title('Performance over time in terms of global model Davies-Bouldin sco
 ax2.set_xlabel('round number')
 ax2.set_ylabel('Davies-Bouldin score')
 ax2.set_ylim([0, 2])
-ax2.legend(log_folders)
+fig.legend(log_folders, loc='right')
 
-filename = 'performance.png'
+filename = 'performance_closely_real.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 

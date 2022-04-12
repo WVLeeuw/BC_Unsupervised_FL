@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folder = 'IID'
+log_folder = 'closely_3'
 
 # Plot, for the provided log folder, the local model performance for ONE device (selected at random)
 # vs. global model performance over n rounds.
@@ -69,6 +69,6 @@ ax.set_xlabel('Round number')
 ax.set_ylim([-1, 1])
 ax.legend()
 
-filename = 'local_vs_global_performance.png'
+filename = 'local_vs_global_performance_nonIID.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

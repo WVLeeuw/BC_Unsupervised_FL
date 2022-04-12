@@ -5,7 +5,7 @@ import block
 from blockchain import Blockchain
 import json
 
-log_folders = ['51attack_rs0_1', '51attack_rs0_2', '51attack_rs0_3', '51attack_rs0_4', '51attack_rs0_5']
+log_folders = ['closely_real_1', 'closely_real_2', 'closely_real_3', 'closely_real_4', 'closely_real_5']
 fig_path = f'../logs/plots/'
 
 # Plot, for the provided log folder, the rounds (i.e. scatter) in which a malicious leader managed to have
@@ -88,7 +88,7 @@ prop_mal_won = total_mal_won/total_mal_leaders
 print('Malicious devices won ' + ('%.2f' % (prop_mal_won * 100)) + '% of the time they were assigned to be a leader.')
 print('Malicious devices had a ' + ('%.2f' % (prop_mal_leader * 100)) + '% chance to be assigned leader.')
 
-with open(f'{fig_path}info/malicious_successes_51attack_rs0.txt', 'a') as f:
+with open(f'{fig_path}info/malicious_successes_nonIID_real.txt', 'a') as f:
     f.write('Malicious devices won ' + ('%.2f' % (prop_mal_won * 100)) +
             '% of the time they were assigned to be a leader. \n')
     f.write('Malicious devices had a ' + ('%.2f' % (prop_mal_leader * 100)) + '% chance to be assigned leader.')

@@ -14,11 +14,13 @@ from utils import data_utils
 
 start_time = time.time()
 
-# ToDo: run centralized k-means for multiple datasets.
-# X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
-X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
-X = [item for sublist in X for item in sublist]
-X = np.asarray(X)
+X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
+# X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
+# X = [item for sublist in X for item in sublist]
+# X = np.asarray(X)
+# breast_cancer = load_breast_cancer()
+# X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
+# y = breast_cancer.target
 
 n_clusters = 3
 central_model = cluster.KMeans(n_clusters=n_clusters, max_iter=100)
@@ -66,12 +68,14 @@ ax1.set_ylabel("Cluster label")
 ax1.axvline(x=silhouette_avg, color='red', linestyle='--')  # vertical line to show silhouette avg
 ax1.set_yticks([])  # no ticks on y-axis
 ax1.set_xticks([-.4, -.2, 0, .2, .4, .6, .8, 1])
-fig.savefig(fname='figures/silhouette_analysis_centralized_kmeans.png')
+fig.savefig(fname='figures/silhouette_analysis_centralized_kmeans_blobs.png')
 plt.show()
 
 # Cluster plot
 fig, ax2 = plt.subplots(1, 1)
 colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
+# convert X from df to array.
+# X = X.to_numpy()
 ax2.scatter(X[:, 0], X[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')  # data points
 ax2.scatter(centroids[:, 0], centroids[:, 1], marker='o', c="white", s=200, edgecolor='k')  # centers
 
@@ -81,6 +85,6 @@ for i, c in enumerate(centroids):
 ax2.set_title("The visualization of clustered data.")
 ax2.set_xlabel("Feature space for the 1st feature")
 ax2.set_ylabel("Feature space for the 2nd feature")
-fig.savefig(fname='figures/centralized_clustering_result.png')
+fig.savefig(fname='figures/centralized_clustering_result_blobs.png')
 
 plt.show()

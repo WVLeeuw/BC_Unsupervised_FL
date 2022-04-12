@@ -240,7 +240,7 @@ if __name__ == '__main__':
     comm_round = 0
     num_rounds_no_winner = 0
     num_reinitialized = 0
-    while total_comm_rounds < args['num_comm']:
+    while comm_round < args['num_comm']:
         # create log folder for communication round
         log_folder_path_comm_round = f"{log_folder_path}/comm_{comm_round + 1}"
         if os.path.exists(log_folder_path_comm_round):
@@ -249,8 +249,13 @@ if __name__ == '__main__':
         os.mkdir(log_folder_path_comm_round)
         print(f"\nCommunication round {comm_round + 1}.")
 
+        # Log initial centers
+        if comm_round == 0:
+            with open(f"{log_folder_path_comm_round}/initial_centers.data", 'wb') as file:
+                pickle.dump(init_centroids, file)
+
         comm_round_start_time = time.time()  # to keep track how long communication rounds take.
-        # parallel_time_estimate = 0  # to keep track of the time it would take if every device ran in parallel
+        parallel_time_estimate = 0  # to keep track of the time it would take if every device ran in parallel
         total_comm_rounds += 1  # to keep track of the total nr of communication rounds.
 
         # i. assign roles to devices dependent on contribution and reputation
@@ -452,6 +457,7 @@ if __name__ == '__main__':
 
         # iii. committee members validate retrieved updates and aggregate viable results
         max_local_update_time = 0  # including transmission
+        max_validation_time = 0
         for comm_member in committee_members_this_round:
             global_centroids = comm_member.retrieve_global_centroids()
             if args['committee_member_update_wait_time']:
@@ -530,7 +536,10 @@ if __name__ == '__main__':
                     updates_per_centroid = comm_member.match_local_with_global_centroids()
                     aggr_centroids = comm_member.aggr_updates(updates_per_centroid)
 
-                aggr_time = comm_member.return_aggregation_time()
+                validation_time = comm_member.return_validation_time()
+                if validation_time > max_validation_time:
+                    max_validation_time = validation_time
+
                 if args['verbose']:
                     print(aggr_centroids)
                     print(str(comm_member.validate_update(aggr_centroids)) +
@@ -538,7 +547,7 @@ if __name__ == '__main__':
                           str(comm_member.validate_update(comm_member.retrieve_global_centroids())))
 
         # iv. committee members send updated centroids to every leader
-        max_aggr_time = 0  # including transmission
+        max_aggr_time = 0
         for leader in leaders_this_round:
             if args['leader_wait_time']:
                 for comm_member in leader.return_online_committee_members():
@@ -777,6 +786,9 @@ if __name__ == '__main__':
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
                     comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
+                # Log updated centroids separately
+                with open(f"{log_folder_path_comm_round}/updated_centroids.data", "wb") as file:
+                    pickle.dump(winner.retrieve_global_centroids(), file)
         else:
             # check whether it holds for all leaders that any(leader.return_deltas()) == 0.0, then reinit.
             deltas_list = []
@@ -823,16 +835,20 @@ if __name__ == '__main__':
         comm_round_time_taken = time.time() - comm_round_start_time  # total time of the comm round.
         print(f"Time taken this communication round: {comm_round_time_taken} seconds.")
         time_taken_per_round.append(comm_round_time_taken)
-        # parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
-        #                          latest_vote_cast_time + block_completion_time + total_propagation_delay + \
-        #                          total_broadcast_delay
-        # print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-        #       f"{parallel_time_estimate} seconds. \n")
-        # est_time_taken_parallel_per_round.append(parallel_time_estimate)
+        parallel_time_estimate = role_assignment_time + max_local_update_time + max_aggr_time + max_proposal_time + \
+                                 latest_vote_cast_time + block_completion_time + total_propagation_delay + \
+                                 total_broadcast_delay
+        estimate_wo_role_assignment = parallel_time_estimate - role_assignment_time
+        print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
+              f"{parallel_time_estimate} seconds.")
+        print(f"Limited to time spent by devices (i.e. excluding role assignment): {estimate_wo_role_assignment}.")
+        est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
         if not re_init_event:
             with open(f"{log_folder_path_comm_round}/round_{comm_round + 1}_info.txt", 'a') as file:
                 file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
+                file.write(f"Estimate time taken if devices ran in parallel: {parallel_time_estimate} seconds. \n")
+                file.write(f"Estimate time without role assignment: {estimate_wo_role_assignment} seconds. \n")
                 # file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
                 #            f"{parallel_time_estimate} seconds. \n")
                 silhouette_scores = []
@@ -895,8 +911,8 @@ if __name__ == '__main__':
             file.write(json_block)
 
     print(f"Total time spent performing {total_comm_rounds} rounds: {sum(time_taken_per_round)} seconds.")
-    # print(f"Estimate if all devices ran in parallel during {total_comm_rounds} rounds: "
-    #       f"{sum(est_time_taken_parallel_per_round)} seconds.")
+    print(f"Estimate if all devices ran in parallel during {total_comm_rounds} rounds: "
+          f"{sum(est_time_taken_parallel_per_round)} seconds.")
 
     # Plot time taken per round.
     fig1, ax1 = plt.subplots(1, 1)

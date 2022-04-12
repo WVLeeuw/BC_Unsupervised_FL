@@ -431,7 +431,8 @@ class Device:
         silhouette_avg = silhouette_score(self.dataset, cluster_labels)
         # self.update_contribution(silhouette_avg)
         validation_time = (time.time() - validation_time) / self.computation_power
-        self.committee_validation_time = validation_time
+        # N.B. changed to += rather than =, as this is done multiple times.
+        self.committee_validation_time += validation_time
         return silhouette_avg
 
     def return_validation_time(self):
@@ -536,7 +537,6 @@ class Device:
         start_time = time.time()
         # local_updates_obtained = [local_update_tuple[0] for local_update_tuple in self.centroids_idxs_records]
 
-        # ToDo: determine whether it suffices to have the same behavior as malicious_local_update here.
         min_vals, max_vals = data_utils.obtain_bounds(self.dataset)
         bounds = []
         for i in range(len(min_vals)):  # N.B. len(min_vals) should be equal to n_dims every single time.
@@ -588,7 +588,6 @@ class Device:
     def return_online_associated_data_owners(self):
         return self.associated_data_owners_set
 
-    # ToDo: figure out whether to verify more block characteristics or just signature.
     def verify_block(self, block):
         if self.verify_signature(block):
             return True
@@ -633,7 +632,6 @@ class Device:
         for device_idx_o, contr_val_o in old_contribution.items():
             for device_idx_n, contr_val_n in block.get_data()['contribution'].items():
                 if device_idx_o == device_idx_n:
-                    # ToDo: figure out whether this is as tight a bound as we can get on contribution.
                     # Tightness of this bounds depends on the choice of contribution lag, which committee knows of.
                     if abs(contr_val_n - contr_val_o) >= 2:
                         contr_check = False
@@ -737,6 +735,13 @@ class Device:
     def return_aggr_wait_time(self):
         return self.leader_wait_time
 
+    # Obtained to evaluate whether the stop criterion is met.
+    def return_init_clusters(self):
+        chain = self.return_blockchain_obj().get_chain_structure()
+        init_block = chain[0]
+        init_clusters = init_block.get_data()['centroids']
+        return init_clusters
+
     # Computes the new global centroids given the aggregated centroids from committee members.
     def compute_update(self):
         global_update_computation_time = time.time()
@@ -759,14 +764,22 @@ class Device:
             new_g_centroids.append(self.global_update_lag * g_centroids[i] +
                                    (1 - self.global_update_lag) * updated_g_centroids[i])
 
+        init_clusters = self.return_init_clusters()
+        min_init_dist = min([euclidean(init_clusters[i], init_clusters[i + 1]) for i in range(len(init_clusters) - 1)])
         deltas = []
         for i in range(len(g_centroids)):
             deltas.append(euclidean(g_centroids[i], new_g_centroids[i]))
-        stop_per_centroid = [delta < self.stop_condition for delta in deltas]
-        print(deltas, all(stop_per_centroid))
+        avg_delta = sum(deltas)/len(deltas)
+        # stop_per_centroid = [delta < self.stop_condition for delta in deltas]
+        stop_criterion = avg_delta/min_init_dist < self.stop_condition
+        # print(deltas, stop_per_centroid)
+        print(deltas, stop_criterion)
         self.deltas = deltas
 
-        if all(stop_per_centroid):
+        # if all(stop_per_centroid):
+        #     self._broadcast_stop_request()
+
+        if stop_criterion:
             self._broadcast_stop_request()
 
         global_update_computation_time = (time.time() - global_update_computation_time) / self.computation_power
