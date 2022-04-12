@@ -53,8 +53,6 @@ ax1.set_ylabel('Time spent (s)')
 ax1.set_xlabel('Round number')
 ax1.set_ylim([0, 4])
 
-filename = 'time_taken_loosely_real_IID.png'
-# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 
 fig2 = plt.figure(figsize=(8, 6))
@@ -64,5 +62,8 @@ ax2.set_title('Average estimated time spent per learning round if run in paralle
 ax2.set_ylabel('Time spent (s)')
 ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
+
+filename = 'time_taken_loosely_real_IID.png'
+# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

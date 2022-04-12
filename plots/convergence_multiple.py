@@ -8,7 +8,9 @@ import re
 import numpy as np
 from scipy.spatial.distance import euclidean
 
-log_folders = ['04122022_115042', '04122022_115114']
+fig_path = f'../logs/plots/'
+
+log_folders = ['IID_1', 'nonIID_1']
 fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
@@ -117,4 +119,6 @@ ax2.set_xlabel('round number')
 ax2.set_ylabel('proportional distance w.r.t. distance between initial centers')
 
 fig1.legend(log_folders)
+# filename = 'role_assignment_comparison_closely_somewhat.png'
+# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

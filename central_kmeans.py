@@ -14,13 +14,13 @@ from utils import data_utils
 
 start_time = time.time()
 
-X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
+# X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
 # X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
 # X = [item for sublist in X for item in sublist]
 # X = np.asarray(X)
-# breast_cancer = load_breast_cancer()
-# X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
-# y = breast_cancer.target
+breast_cancer = load_breast_cancer()
+X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
+y = breast_cancer.target
 
 n_clusters = 3
 central_model = cluster.KMeans(n_clusters=n_clusters, max_iter=100)
@@ -75,7 +75,7 @@ plt.show()
 fig, ax2 = plt.subplots(1, 1)
 colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
 # convert X from df to array.
-# X = X.to_numpy()
+X = X.to_numpy()
 ax2.scatter(X[:, 0], X[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')  # data points
 ax2.scatter(centroids[:, 0], centroids[:, 1], marker='o', c="white", s=200, edgecolor='k')  # centers
 

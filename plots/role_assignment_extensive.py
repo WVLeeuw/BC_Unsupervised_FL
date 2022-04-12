@@ -4,8 +4,10 @@ import os
 
 import numpy as np
 
-simulated_1 = ['closely_real_1', 'closely_real_2', 'closely_real_3', 'closely_real_4', 'closely_real_5']
-simulated_2 = ['somewhat_real_1', 'somewhat_real_2', 'somewhat_real_3', 'somewhat_real_4', 'somewhat_real_5']
+fig_path = f'../logs/plots/'
+
+simulated_1 = ['nonIID_1', 'nonIID_2', 'nonIID_3', 'nonIID_4', 'nonIID_5']
+simulated_2 = ['mal_10_rs0_1', 'mal_10_rs0_2', 'mal_10_rs0_3', 'mal_10_rs0_4', 'mal_10_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -135,7 +137,7 @@ ax2.set_ylabel('proportion of rounds assigned')
 ax2.set_ylim([0, 1])
 plt.xticks(r + width/2, labels)
 
-fig.legend(['closely_real', 'somewhat_real'])
+fig.legend(['with rep. system', 'without rep. system'])
 filename = 'role_assignment_comparison_closely_somewhat.png'
 # plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

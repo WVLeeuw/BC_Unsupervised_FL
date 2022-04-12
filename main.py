@@ -240,7 +240,7 @@ if __name__ == '__main__':
     comm_round = 0
     num_rounds_no_winner = 0
     num_reinitialized = 0
-    while comm_round < args['num_comm']:
+    while total_comm_rounds < args['num_comm']:
         # create log folder for communication round
         log_folder_path_comm_round = f"{log_folder_path}/comm_{comm_round + 1}"
         if os.path.exists(log_folder_path_comm_round):
@@ -785,7 +785,7 @@ if __name__ == '__main__':
                     file.write(f"Winner's alignment was {is_malicious_node}. \n")
                 if winner.return_stop_check():  # stop the global learning process.
                     print("Stopping condition met. Requesting peers to stop the global learning process...")
-                    comm_round = args['num_comm']  # set comm_rounds at max rounds to stop the process.
+                    total_comm_rounds = args['num_comm']  # set comm_rounds at max rounds to stop the process.
                 # Log updated centroids separately
                 with open(f"{log_folder_path_comm_round}/updated_centroids.data", "wb") as file:
                     pickle.dump(winner.retrieve_global_centroids(), file)
@@ -915,14 +915,14 @@ if __name__ == '__main__':
           f"{sum(est_time_taken_parallel_per_round)} seconds.")
 
     # Plot time taken per round.
-    fig1, ax1 = plt.subplots(1, 1)
-    ax1.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
-    ax1.set_title('Time taken per communication round')
-    ax1.set_xlabel('Round number')
-    ax1.set_ylabel('Time taken (s)')
-    ax1.set_ylim([0.0, 4])
-    fig1.savefig(fname=f"{log_folder_path}/time_per_round.png", dpi=600, bbox_inches='tight')
-    plt.show()
+    # fig1, ax1 = plt.subplots(1, 1)
+    # ax1.plot(range(1, total_comm_rounds + 1), time_taken_per_round)
+    # ax1.set_title('Time taken per communication round')
+    # ax1.set_xlabel('Round number')
+    # ax1.set_ylabel('Time taken (s)')
+    # ax1.set_ylim([0.0, 4])
+    # fig1.savefig(fname=f"{log_folder_path}/time_per_round.png", dpi=600, bbox_inches='tight')
+    # plt.show()
 
     # Same thing, but for the estimate of time it would take if this were a real distributed system.
     # fig2, ax2 = plt.subplots(1, 1)
@@ -956,7 +956,7 @@ if __name__ == '__main__':
         ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
                     edgecolors='k')
     fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
     # Final clustering visualization
     global_dataset = []
@@ -984,7 +984,7 @@ if __name__ == '__main__':
     ax4.set_xlabel("Feature space of the 1st feature")
     ax4.set_ylabel("Feature space of the 2nd feature")
     fig4.savefig(fname=f"{log_folder_path}/final_clustering.png", dpi=600, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
     # Silhouette visualization (per cluster)
     fig5, ax5 = plt.subplots(1, 1)
@@ -1021,7 +1021,7 @@ if __name__ == '__main__':
     ax5.set_xticks([-.4, -.2, 0, .2, .4, .6, .8, 1])
     ax5.legend(range(n_clusters + 1))
     fig5.savefig(fname=f"{log_folder_path}/silhouette_analysis.png", dpi=600, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
     print(f"Total number of communication rounds: {total_comm_rounds}.")
     print(f"Proportion of rounds without a winner: {num_rounds_no_winner}/{total_comm_rounds}")
