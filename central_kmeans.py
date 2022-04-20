@@ -68,7 +68,7 @@ ax1.set_ylabel("Cluster label")
 ax1.axvline(x=silhouette_avg, color='red', linestyle='--')  # vertical line to show silhouette avg
 ax1.set_yticks([])  # no ticks on y-axis
 ax1.set_xticks([-.4, -.2, 0, .2, .4, .6, .8, 1])
-fig.savefig(fname='figures/silhouette_analysis_centralized_kmeans_blobs.png')
+fig.savefig(fname='figures/silhouette_analysis_centralized_kmeans.png')
 plt.show()
 
 # Cluster plot
@@ -85,6 +85,6 @@ for i, c in enumerate(centroids):
 ax2.set_title("The visualization of clustered data.")
 ax2.set_xlabel("Feature space for the 1st feature")
 ax2.set_ylabel("Feature space for the 2nd feature")
-fig.savefig(fname='figures/centralized_clustering_result_blobs.png')
+fig.savefig(fname='figures/centralized_clustering_resul.png')
 
 plt.show()

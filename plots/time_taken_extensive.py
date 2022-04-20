@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['IID_real_1', 'IID_real_2', 'IID_real_3', 'IID_real_4', 'IID_real_5']
-simulated_2 = ['nonIID_real_1', 'nonIID_real_2', 'nonIID_real_3', 'nonIID_real_4', 'nonIID_real_5']
+simulated_1 = ['blocks_100_real_1', 'blocks_100_real_2', 'blocks_100_real_3', 'blocks_100_real_4', 'blocks_100_real_5']
+simulated_2 = ['blocks_1000_real_1', 'blocks_1000_real_2', 'blocks_1000_real_3', 'blocks_1000_real_4', 'blocks_1000_real_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -49,10 +49,12 @@ print(max_rounds)  # sanity check
 
 avg_time_spent_1, avg_time_spent_2 = [], []
 avg_est_time_spent_1, avg_est_time_spent_2 = [], []
+avg_est_excl_role_1, avg_est_excl_role_2 = [], []
 # Obtain values for simulated_1
 for i in range(1, max(max_rounds_1) + 1):
     times_this_round = []
     est_times_this_round = []
+    est_excl_role_this_round = []
     for j in range(len(simulated_1)):
         round_info_file = f'../logs/{simulated_1[j]}/comm_{i}/round_{i}_info.txt'
         if os.path.exists(round_info_file):
@@ -63,16 +65,17 @@ for i in range(1, max(max_rounds_1) + 1):
                     times_this_round.append(float(line.split(sep=':')[-1].split()[0]))
                 if 'Estimate time taken' in line:
                     est_times_this_round.append(float(line.split(sep=':')[-1].split()[0]))
+                if 'Estimate time without' in line:
+                    est_excl_role_this_round.append(float(line.split(sep=':')[-1].split()[0]))
     avg_time_spent_1.append(sum(times_this_round)/len(times_this_round))
     avg_est_time_spent_1.append(sum(est_times_this_round)/len(est_times_this_round))
-
-print(f'Average total time per run is {sum(avg_time_spent_1)/max(max_rounds) * 100} seconds.')
-print(f'Average total time estimate per run is {sum(avg_est_time_spent_1)/max(max_rounds) * 100} seconds.')
+    avg_est_excl_role_1.append(sum(est_excl_role_this_round)/len(est_excl_role_this_round))
 
 # Obtain values for simulated_2
 for i in range(1, max(max_rounds_2) + 1):
     times_this_round = []
     est_times_this_round = []
+    est_excl_role_this_round = []
     for j in range(len(simulated_2)):
         round_info_file = f'../logs/{simulated_2[j]}/comm_{i}/round_{i}_info.txt'
         if os.path.exists(round_info_file):
@@ -83,19 +86,32 @@ for i in range(1, max(max_rounds_2) + 1):
                     times_this_round.append(float(line.split(sep=':')[-1].split()[0]))
                 if 'Estimate time taken' in line:
                     est_times_this_round.append(float(line.split(sep=':')[-1].split()[0]))
+                if 'Estimate time without' in line:
+                    est_excl_role_this_round.append(float(line.split(sep=':')[-1].split()[0]))
     avg_time_spent_2.append(sum(times_this_round)/len(times_this_round))
     avg_est_time_spent_2.append(sum(est_times_this_round)/len(est_times_this_round))
+    avg_est_excl_role_2.append(sum(est_excl_role_this_round) / len(est_excl_role_this_round))
 
-print(f'Average total time per run is {sum(avg_time_spent_2)/max(max_rounds) * 100} seconds.')
-print(f'Average total time estimate per run is {sum(avg_est_time_spent_2)/max(max_rounds) * 100} seconds.')
+avg_per_run_1 = sum(avg_time_spent_1)/max(max_rounds_1) * 100
+avg_per_run_2 = sum(avg_time_spent_2)/max(max_rounds_2) * 100
+avg_est_per_run_1 = sum(avg_est_time_spent_1)/max(max_rounds_1) * 100
+avg_est_per_run_2 = sum(avg_est_time_spent_2)/max(max_rounds_2) * 100
+avg_est_excl_role_per_run_1 = sum(avg_est_excl_role_1)/max(max_rounds_1) * 100
+avg_est_excl_role_per_run_2 = sum(avg_est_excl_role_2)/max(max_rounds_1) * 100
+print(f'Average total time per run is {avg_per_run_1} and {avg_per_run_2} seconds respectively.')
+print(f'Average total time estimate per run is {avg_est_per_run_1} and {avg_est_per_run_2} seconds respectively.')
+print(f'Excluding role assignment, the average total time estimate per run is {avg_est_excl_role_per_run_1} and '
+      f'{avg_est_excl_role_per_run_2} seconds respectively.')
 
 # Now build the plots.
 colors = ['purple', 'orange']
 
 fig = plt.figure(figsize=(8, 6))
 ax1 = fig.subplots(1, 1)
-ax1.plot(range(1, max(max_rounds_1) + 1), avg_time_spent_1, linestyle='-', marker='o', color=colors[0])
-ax1.plot(range(1, max(max_rounds_2) + 1), avg_time_spent_2, linestyle='-', marker='o', color=colors[1])
+ax1.plot(range(1, max(max_rounds_1) + 1), avg_time_spent_1, linestyle='-', color=colors[0])
+ax1.plot(range(1, max(max_rounds_2) + 1), avg_time_spent_2, linestyle='-', color=colors[1])
+# ax1.annotate(text="Average time per 100 rounds with 36DO, 15C: " + ("%.2f" % avg_per_run_1) + " seconds", xy=(0.5, 3.25))
+# ax1.annotate(text="Average time per 100 rounds with 48DO, 20C: " + ("%.2f" % avg_per_run_2) + " seconds", xy=(0.5, 3.5))
 ax1.set_title('Average time spent per learning round.')
 ax1.set_ylabel('Time spent (s)')
 ax1.set_xlabel('Round number')
@@ -106,15 +122,38 @@ plt.show()
 
 fig2 = plt.figure(figsize=(8, 6))
 ax2 = fig2.subplots(1, 1)
-ax2.plot(range(1, max(max_rounds_1) + 1), avg_est_time_spent_1, linestyle='-', marker='o', color=colors[0])
-ax2.plot(range(1, max(max_rounds_2) + 1), avg_est_time_spent_2, linestyle='-', marker='o', color=colors[1])
+ax2.plot(range(1, max(max_rounds_1) + 1), avg_est_time_spent_1, linestyle='-', color=colors[0])
+ax2.plot(range(1, max(max_rounds_2) + 1), avg_est_time_spent_2, linestyle='-', color=colors[1])
+# ax2.annotate(text="Average estimated time per 100 rounds with 36DO, 15C: " + ("%.2f" % avg_est_per_run_1) + " seconds",
+#              xy=(0.5, 6.25))
+# ax2.annotate(text="Average estimated time per 100 rounds with 48DO, 20C: " + ("%.2f" % avg_est_per_run_2) + " seconds",
+#              xy=(0.5, 6.5))
 ax2.set_title('Average estimated time spent per learning round if run in parallel.')
 ax2.set_ylabel('Time spent (s)')
 ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
-ax2.legend(['IID', 'non-IID'])
+ax2.legend(['100 blocks', '1000 blocks'])
 
-# filename = 'time_taken_loosely_real_IID.png'
-# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+filename = 'time_taken_comparison_100_vs_1000_blocks.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+
+plt.show()
+
+fig3 = plt.figure(figsize=(8, 6))
+ax3 = fig3.subplots(1, 1)
+ax3.plot(range(1, max(max_rounds_1) + 1), avg_est_excl_role_1, linestyle='-', color=colors[0])
+ax3.plot(range(1, max(max_rounds_2) + 1), avg_est_excl_role_2, linestyle='-', color=colors[1])
+# ax3.annotate(text="Average estimated time per 100 rounds with 36DO, 15C: " + ("%.2f" % avg_est_excl_role_per_run_1) + " seconds",
+#              xy=(0.5, 1.6))
+# ax3.annotate(text="Average estimated time per 100 rounds with 48DO, 20C: " + ("%.2f" % avg_est_excl_role_per_run_2) +
+#                   " seconds", xy=(0.5, 1.75))
+ax3.set_title('Average estimated time spent per learning round in parallel, excluding role assignment.')
+ax3.set_ylabel('Time spent (s)')
+ax3.set_xlabel('Round number')
+ax3.set_ylim([0, 2])
+ax3.legend(['100 blocks', '1000 blocks'])
+
+filename = 'est_time_taken_wo_role_assign_comparison_100_vs_1000_blocks.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

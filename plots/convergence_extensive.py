@@ -10,8 +10,8 @@ from scipy.spatial.distance import euclidean
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['nonIID_1', 'nonIID_2', 'nonIID_3', 'nonIID_4', 'nonIID_5']
-simulated_2 = ['IID_1', 'IID_2', 'IID_3', 'IID_4', 'IID_5']
+simulated_1 = ['mal_30_IID_real_1', 'mal_30_IID_real_2', 'mal_30_IID_real_3', 'mal_30_IID_real_4', 'mal_30_IID_real_5']
+simulated_2 = ['mal_30_IID_real_rs0_1', 'mal_30_IID_real_rs0_2', 'mal_30_IID_real_rs0_3', 'mal_30_IID_real_rs0_4', 'mal_30_IID_real_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -143,7 +143,7 @@ avg_dists_1 = np.array(temp_1).astype(np.double)
 prop_dists_1 = avg_dists_1/avg_min_dist_init_1
 cur_mask = np.isfinite(avg_dists_1)
 ax1.plot(np.arange(1, max(max_rounds_1) + 1)[cur_mask], prop_dists_1[cur_mask], linestyle='-', marker='o',
-         color=colors[0], label='non-IID')
+         color=colors[0], label='with rep. system')
 
 print(prop_dists_1[cur_mask])
 
@@ -151,7 +151,7 @@ avg_dists_2 = np.array(temp_2).astype(np.double)
 prop_dists_2 = avg_dists_2/avg_min_dist_init_2
 cur_mask = np.isfinite(avg_dists_2)
 ax1.plot(np.arange(1, max(max_rounds_2) + 1)[cur_mask], prop_dists_2[cur_mask], linestyle='-', marker='o',
-         color=colors[1], label='IID')
+         color=colors[1], label='without rep. system')
 
 print(prop_dists_2[cur_mask])
 
@@ -160,7 +160,7 @@ ax1.set_xlabel('round number')
 ax1.set_ylabel('proportional distance w.r.t. distance between initial centers')
 ax1.legend()
 
-# filename = 'role_assignment_comparison_closely_somewhat.png'
-# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+filename = 'convergence_mal_30_with_vs_without_rep_real.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 

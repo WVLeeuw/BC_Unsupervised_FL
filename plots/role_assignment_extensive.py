@@ -112,7 +112,7 @@ regular_counts_2 = [B_none_count_2, B_data_owner_count_2, B_committee_count_2, B
 malicious_props_1 = [i/(num_malicious_1*totals[0]) for i in malicious_counts_1]
 malicious_props_2 = [i/(num_malicious_2*totals[1]) for i in malicious_counts_2]
 regular_props_1 = [i/(num_regular_1*totals[0]) for i in regular_counts_1]
-regular_props_2 = [i/(num_regular_2*totals[0]) for i in regular_counts_2]
+regular_props_2 = [i/(num_regular_2*totals[1]) for i in regular_counts_2]
 
 labels = ['None', 'data owner', 'committee', 'leader']
 colors = ['purple', 'orange']
@@ -124,20 +124,20 @@ n = len(labels)
 r = np.arange(n)
 width = .3
 
-ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k', label='closely_real')
-ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k', label='somewhat_real')
+ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k', label='non-IID')
+ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k', label='IID')
 ax1.set_title('Role assignment for malicious devices')
 ax1.set_ylabel('proportion of rounds assigned')
 ax1.set_ylim([0, 1])
 
-ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k', label='closely_real')
-ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k', label='somewhat_real')
+ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k', label='non-IID')
+ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k', label='IID')
 ax2.set_title('Role assignment for regular devices')
 ax2.set_ylabel('proportion of rounds assigned')
 ax2.set_ylim([0, 1])
 plt.xticks(r + width/2, labels)
 
 fig.legend(['with rep. system', 'without rep. system'])
-filename = 'role_assignment_comparison_closely_somewhat.png'
-# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+filename = 'role_assignment_comparison_mal_10_rep_vs_norep_blobs.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

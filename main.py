@@ -841,7 +841,8 @@ if __name__ == '__main__':
         estimate_wo_role_assignment = parallel_time_estimate - role_assignment_time
         print(f"Estimate time spent if all devices ran in parallel (real distributed system): "
               f"{parallel_time_estimate} seconds.")
-        print(f"Limited to time spent by devices (i.e. excluding role assignment): {estimate_wo_role_assignment}.")
+        print(f"Limited to time spent by devices (i.e. excluding role assignment): {estimate_wo_role_assignment} "
+              f"seconds.")
         est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
         if not re_init_event:
