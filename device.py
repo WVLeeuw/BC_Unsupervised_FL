@@ -110,6 +110,7 @@ class Device:
         self.feedback_dicts = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}
+        self.centroids_sender_dict = dict()  # for feedback purposes (reputation)
         self.new_centroids = []
         self.deltas = []  # Euclidean distances between previous centroids and new centroids.
         self.proposed_block = None
@@ -770,14 +771,9 @@ class Device:
         for i in range(len(g_centroids)):
             deltas.append(euclidean(g_centroids[i], new_g_centroids[i]))
         avg_delta = sum(deltas)/len(deltas)
-        # stop_per_centroid = [delta < self.stop_condition for delta in deltas]
         stop_criterion = avg_delta/min_init_dist < self.stop_condition
-        # print(deltas, stop_per_centroid)
         print(deltas, stop_criterion)
         self.deltas = deltas
-
-        # if all(stop_per_centroid):
-        #     self._broadcast_stop_request()
 
         if stop_criterion:
             self._broadcast_stop_request()
@@ -811,6 +807,7 @@ class Device:
         self.new_centroids.append(aggregated_centroids)
         self.feedback_dicts.append(feedback)
         self.seen_committee_idxs.add(committee_idx)
+        self.centroids_sender_dict[committee_idx] = aggregated_centroids
 
     # Build a candidate block from the newly produced global centroids, computed contribution scores and provide
     # feedback on committee members by updating their reputation.
@@ -927,12 +924,22 @@ class Device:
         updated_neg_reputation = copy.copy(self.obtain_latest_block().get_data()['neg_reputation'])
 
         for member_idx in self.seen_committee_idxs:
-            if member_idx in updated_pos_reputation:  # check if key exists
-                updated_pos_reputation[member_idx] = updated_pos_reputation.get(member_idx, 1) + 1
-            else:  # first time we encounter the device
-                # initialized at one, plus one successful interaction, for clarity
-                updated_pos_reputation[member_idx] = 1 + 1
+            # Check whether the provided aggregate was good (enough).
+            # If so, we can increment their reputation. Decrement otherwise.
+            if self.validate_update(self.centroids_sender_dict[member_idx]) >= \
+                    self.validate_update(self.retrieve_global_centroids()):
+                if member_idx in updated_pos_reputation:  # check if key exists
+                    updated_pos_reputation[member_idx] = updated_pos_reputation.get(member_idx, 1) + 1
+                else:  # first time we encounter the device
+                    # initialized at one, plus one successful interaction, for clarity
+                    updated_pos_reputation[member_idx] = 1 + 1
+            else:
+                if member_idx in updated_neg_reputation:
+                    updated_neg_reputation[member_idx] = updated_neg_reputation.get(member_idx, 1) + 1
+                else:
+                    updated_neg_reputation[member_idx] = 1 + 1
 
+        # Then check anyone that was missed (were not in self.seen_committee_idxs).
         for member_idx in committee_members_idxs:
             if member_idx not in self.seen_committee_idxs:
                 if member_idx in updated_neg_reputation:
@@ -984,6 +991,7 @@ class Device:
         self.received_votes = []
         self.obtained_aggregated_unordered = {}
         self.obtained_aggregates_arrival_order_queue = {}
+        self.centroids_sender_dict = dict()
         self.stop_check = False
 
 

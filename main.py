@@ -75,6 +75,12 @@ parser.add_argument('-rfc', '--resume_from_chain', type=str, default=None,
                          'blockchain. Only provide the date.')
 parser.add_argument('-rs', '--reputation_system', type=int, default=1,
                     help='whether to assign roles based on the reputation system.')
+parser.add_argument('-cth', '--contribution_threshold', type=float, default=-.2,
+                    help="threshold value for the contribution. If a device's contribution lower than the provided "
+                         "value, the device will be excluded from being a data owner entirely.")
+parser.add_argument('-rr', '--reputation_ratio', type=float, default=3.0,
+                    help="ratio of negative interactions to positive interactions in which case a device is excluded "
+                         "from being a committee member or leader.")
 
 # distributed system attributes
 parser.add_argument('-ns', '--network_stability', type=float, default=1.0, help='the odds of a device being and '
@@ -233,6 +239,10 @@ if __name__ == '__main__':
     print(math.ceil(sum(k_choices) / len(k_choices)) == args['num_global_centroids'])
     # check if avg equals supplied parameter for global centroids.
 
+    # 8. initialize blacklists for devices
+    blacklist_contr = []
+    blacklist_rep = []
+
     # BCFL-KMeans starts here
     time_taken_per_round = []
     est_time_taken_parallel_per_round = []
@@ -288,16 +298,22 @@ if __name__ == '__main__':
                     pos_count, neg_count = 1, 1
                 # pos_count == neg_count == 1 corresponds to new devices (in theory).
                 if pos_count == neg_count == 1:
-                    # assign committee role with 10% probability.
-                    if random.random() > .9 and len(chosen_catch_up) <= committee_members_to_assign // 3:
+                    # assign committee role with 5% probability.
+                    if random.random() > .95 and len(chosen_catch_up) <= committee_members_to_assign // 3:
                         chosen_catch_up.append(device.return_idx())
 
-                # check whether the device was a committee member in the previous round, not eligible otherwise.
-                if device.return_role() != 'committee':
-                    eligible_comm_members[device.return_idx()] = np.random.beta(pos_count, neg_count)
-                # idem for leaders.
-                if device.return_role() != 'leader':
-                    eligible_leaders[device.return_idx()] = np.random.beta(pos_count, neg_count)
+                # Check whether the device should be blacklisted based on their negative and positive interactions.
+                if neg_count / pos_count >= args['reputation_ratio']:
+                    blacklist_rep.append(device.return_idx())
+
+                # N.B. if a device's contribution is poor, they would not do well to validate other updates either.
+                if device.return_idx() not in blacklist_rep + blacklist_contr:
+                    # check whether the device was a committee member in the previous round, not eligible otherwise.
+                    if device.return_role() != 'committee':
+                        eligible_comm_members[device.return_idx()] = np.random.beta(pos_count, neg_count)
+                    # idem for leaders.
+                    if device.return_role() != 'leader':
+                        eligible_leaders[device.return_idx()] = np.random.beta(pos_count, neg_count)
 
             print(f"{len(chosen_catch_up)} device(s) were chosen to catch up!")
             sorted_eligible_comm = {k: v for k, v in sorted(eligible_comm_members.items(), key=lambda item: item[1],
@@ -338,7 +354,9 @@ if __name__ == '__main__':
             still_unassigned = [device for device in device_list if not device.return_role()]
             if contr_bounds[0] < 0.0:
                 for device in still_unassigned:
-                    if data_owners_to_assign:
+                    if contr_vals[device.return_idx()] < args['contribution_threshold']:
+                        blacklist_contr.append(device.return_idx())
+                    elif data_owners_to_assign and device.return_idx() not in blacklist_contr:
                         contr_range = abs(contr_bounds[1] - contr_bounds[0])
                         # Exclude the bottom 25% of contributors if there are negative contribution values.
                         if device.return_idx() in contr_vals:
@@ -354,6 +372,7 @@ if __name__ == '__main__':
                         elif random.random() > 0.9:  # reached if a new device has just joined.
                             device.assign_data_role()
                             data_owners_to_assign -= 1
+                    # Then append the devices to the data owner list.
                     if device.return_role() == 'data owner':
                         data_owners_this_round.append(device)
             else:  # every device must have positive contribution -- no filtering required.
@@ -843,6 +862,8 @@ if __name__ == '__main__':
               f"{parallel_time_estimate} seconds.")
         print(f"Limited to time spent by devices (i.e. excluding role assignment): {estimate_wo_role_assignment} "
               f"seconds.")
+        print(max_local_update_time, max_aggr_time, max_proposal_time, latest_vote_cast_time, block_completion_time,
+              total_propagation_delay, total_broadcast_delay)
         est_time_taken_parallel_per_round.append(parallel_time_estimate)
 
         if not re_init_event:
@@ -942,7 +963,7 @@ if __name__ == '__main__':
     fig3, ax3 = plt.subplots(1, 1)
     for device in device_list:
         ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
-    colors = ['purple', 'orange', 'cyan']
+    colors = cm.nipy_spectral(cluster_labels.astype(float) / len(track_g_centroids))
     # Plot the initial centroids separately.
     for i in range(len(track_g_centroids[0])):
         ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,

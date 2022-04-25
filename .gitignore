@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 # self-defined
-data/
+utils/data/
 logs/
 blockchains/
 figures/

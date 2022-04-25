@@ -51,7 +51,7 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
             return split_data(df.to_numpy(), labels, num_devices, split_train_test, prop_test, is_iid)
 
         if dataset == 'heart disease':
-            df = pd.read_csv("../data/heart_disease_cleveland.csv")  # not sure how to retrieve just labels here...
+            df = pd.read_csv("data/heart_disease_cleveland.csv")  # not sure how to retrieve just labels here...
             # this implementation does not use split_data for now, because it would require us to extract labels.
             if split_train_test and prop_test is not None:
                 df_train, df_test = train_test_split(df, test_size=prop_test)
@@ -69,7 +69,12 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
                 return np.array_split(df, num_devices)
 
         if dataset == 'forest types':
-            df = pd.read_csv("../data/forest_covertypes.csv")  # not sure how to retrieve just labels here...
+            cur_file = os.path.abspath(os.path.dirname(__file__))
+            covtype_file = os.path.join(cur_file, 'data/forest_covertypes.csv')
+            df = pd.read_csv(covtype_file)
+            labels = df['Cover_Type']
+            df = df.drop('Cover_Type', axis=1)
+            print(df.shape)
             # this implementation does not use split_data for now, because it would require us to extract labels.
             if split_train_test and prop_test is not None:
                 df_train, df_test = train_test_split(df, test_size=prop_test)
@@ -84,10 +89,7 @@ def load_data(dataset=None, is_iid=True, num_devices=3, split_train_test=False, 
                 else:
                     return np.array_split(df_train, num_devices), np.array_split(df_test, num_devices)
             else:
-                if is_iid:
-                    return NotImplementedError
-                else:
-                    return np.array_split(df, num_devices)
+                return np.array_split(df.to_numpy(), num_devices), np.array_split(labels.to_numpy(), num_devices)
 
         if dataset == 'dummy':
             clients_per_cluster = num_devices//clusters

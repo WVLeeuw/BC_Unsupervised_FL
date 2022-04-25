@@ -10,8 +10,8 @@ from scipy.spatial.distance import euclidean
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal_30_IID_real_1', 'mal_30_IID_real_2', 'mal_30_IID_real_3', 'mal_30_IID_real_4', 'mal_30_IID_real_5']
-simulated_2 = ['mal_30_IID_real_rs0_1', 'mal_30_IID_real_rs0_2', 'mal_30_IID_real_rs0_3', 'mal_30_IID_real_rs0_4', 'mal_30_IID_real_rs0_5']
+simulated_1 = ['mal30_nonIID_real_ns1_blacklist_test_1', 'mal30_nonIID_real_ns1_blacklist_test_2', 'mal30_nonIID_real_ns1_blacklist_test_3', 'mal30_nonIID_real_ns1_blacklist_test_4', 'mal30_nonIID_real_ns1_blacklist_test_5']
+simulated_2 = ['mal30_nonIID_real_ns1_rs0_1', 'mal30_nonIID_real_ns1_rs0_2', 'mal30_nonIID_real_ns1_rs0_3', 'mal30_nonIID_real_ns1_rs0_4', 'mal30_nonIID_real_ns1_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -160,7 +160,7 @@ ax1.set_xlabel('round number')
 ax1.set_ylabel('proportional distance w.r.t. distance between initial centers')
 ax1.legend()
 
-filename = 'convergence_mal_30_with_vs_without_rep_real.png'
+filename = 'convergence_mal_30_rep_vs_norep_nonIID.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 

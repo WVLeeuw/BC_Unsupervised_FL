@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['nonIID_1', 'nonIID_2', 'nonIID_3', 'nonIID_4', 'nonIID_5']
-simulated_2 = ['mal_10_rs0_1', 'mal_10_rs0_2', 'mal_10_rs0_3', 'mal_10_rs0_4', 'mal_10_rs0_5']
+simulated_1 = ['mal30_nonIID_real_ns1_blacklist_test_1', 'mal30_nonIID_real_ns1_blacklist_test_2', 'mal30_nonIID_real_ns1_blacklist_test_3', 'mal30_nonIID_real_ns1_blacklist_test_4', 'mal30_nonIID_real_ns1_blacklist_test_5']
+simulated_2 = ['mal30_nonIID_real_ns1_rs0_1', 'mal30_nonIID_real_ns1_rs0_2', 'mal30_nonIID_real_ns1_rs0_3', 'mal30_nonIID_real_ns1_rs0_4', 'mal30_nonIID_real_ns1_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -138,6 +138,6 @@ ax2.set_ylim([0, 1])
 plt.xticks(r + width/2, labels)
 
 fig.legend(['with rep. system', 'without rep. system'])
-filename = 'role_assignment_comparison_mal_10_rep_vs_norep_blobs.png'
+filename = 'role_assignment_comparison_mal_30_nonIID_rep_vs_norep.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

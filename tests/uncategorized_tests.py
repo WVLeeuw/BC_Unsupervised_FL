@@ -43,7 +43,7 @@ def test_data_load_sklearn():
 
 
 def test_data_load_local():
-    df = pd.read_csv("../data/breast_cancer_wisconsin.csv")
+    df = pd.read_csv("../utils/data/breast_cancer_wisconsin.csv")
     # print(df.columns)
     print(df.head())
 

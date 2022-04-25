@@ -14,15 +14,15 @@ from utils import data_utils
 
 start_time = time.time()
 
-# X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
+X, y = make_blobs(n_samples=500, centers=10, n_features=2, random_state=42)
 # X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
 # X = [item for sublist in X for item in sublist]
 # X = np.asarray(X)
-breast_cancer = load_breast_cancer()
-X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
-y = breast_cancer.target
+# breast_cancer = load_breast_cancer()
+# X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
+# y = breast_cancer.target
 
-n_clusters = 3
+n_clusters = 10
 central_model = cluster.KMeans(n_clusters=n_clusters, max_iter=100)
 cluster_labels = central_model.fit_predict(X)
 
@@ -36,19 +36,19 @@ print(f"Time taken to train centralized k-means on synthetic data: {end_time} se
 # Silhouette plot
 fig, ax1 = plt.subplots(1, 1)
 ax1.set_xlim([-0.4, 1])
-ax1.set_ylim([0, len(X) + (n_clusters + 1) * 10])
+ax1.set_ylim([0, len(X) + (len(centroids) + 1) * 10])
 silhouette_avg = silhouette_score(X, cluster_labels)
 silhouette_samples = silhouette_samples(X, cluster_labels)
 
 y_lower = 10
-for i in range(n_clusters):
+for i in range(len(centroids)):
     ith_cluster_silhouette = silhouette_samples[cluster_labels == i]
     ith_cluster_silhouette.sort()
 
     ith_cluster_size = ith_cluster_silhouette.shape[0]
     y_upper = y_lower + ith_cluster_size
 
-    color = cm.nipy_spectral(float(i) / n_clusters)
+    color = cm.nipy_spectral(float(i) / len(centroids))
     print(y_lower, y_upper)
     ax1.fill_betweenx(np.arange(y_lower, y_upper),
                       0,
@@ -73,9 +73,9 @@ plt.show()
 
 # Cluster plot
 fig, ax2 = plt.subplots(1, 1)
-colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
+colors = cm.nipy_spectral(cluster_labels.astype(float) / len(centroids))
 # convert X from df to array.
-X = X.to_numpy()
+# X = X.to_numpy()
 ax2.scatter(X[:, 0], X[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')  # data points
 ax2.scatter(centroids[:, 0], centroids[:, 1], marker='o', c="white", s=200, edgecolor='k')  # centers
 
