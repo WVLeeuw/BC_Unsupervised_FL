@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal30_nonIID_real_ns1_blacklist_test_1', 'mal30_nonIID_real_ns1_blacklist_test_2', 'mal30_nonIID_real_ns1_blacklist_test_3', 'mal30_nonIID_real_ns1_blacklist_test_4', 'mal30_nonIID_real_ns1_blacklist_test_5']
-simulated_2 = ['mal30_nonIID_real_ns1_rs0_1', 'mal30_nonIID_real_ns1_rs0_2', 'mal30_nonIID_real_ns1_rs0_3', 'mal30_nonIID_real_ns1_rs0_4', 'mal30_nonIID_real_ns1_rs0_5']
+simulated_1 = ['mal30_nonIID_blobs_ns1_6', 'mal30_nonIID_blobs_ns1_7', 'mal30_nonIID_blobs_ns1_8', 'mal30_nonIID_blobs_ns1_9', 'mal30_nonIID_blobs_ns1_10']
+simulated_2 = ['mal30_nonIID_blobs_ns1_rs0_1', 'mal30_nonIID_blobs_ns1_rs0_2', 'mal30_nonIID_blobs_ns1_rs0_3', 'mal30_nonIID_blobs_ns1_rs0_4', 'mal30_nonIID_blobs_ns1_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -124,20 +124,20 @@ n = len(labels)
 r = np.arange(n)
 width = .3
 
-ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k', label='non-IID')
-ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k', label='IID')
+ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k')
+ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k')
 ax1.set_title('Role assignment for malicious devices')
 ax1.set_ylabel('proportion of rounds assigned')
 ax1.set_ylim([0, 1])
 
-ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k', label='non-IID')
-ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k', label='IID')
+ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k')
+ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k')
 ax2.set_title('Role assignment for regular devices')
 ax2.set_ylabel('proportion of rounds assigned')
 ax2.set_ylim([0, 1])
 plt.xticks(r + width/2, labels)
 
 fig.legend(['with rep. system', 'without rep. system'])
-filename = 'role_assignment_comparison_mal_30_nonIID_rep_vs_norep.png'
+filename = 'role_assignment_comparison_mal_30_nonIID_blobs_rep_strict_vs_no_rep.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

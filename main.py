@@ -81,6 +81,10 @@ parser.add_argument('-cth', '--contribution_threshold', type=float, default=-.2,
 parser.add_argument('-rr', '--reputation_ratio', type=float, default=3.0,
                     help="ratio of negative interactions to positive interactions in which case a device is excluded "
                          "from being a committee member or leader.")
+parser.add_argument('-csth', '--cosine_sim_threshold', type=float, default=.25,
+                    help="threshold used to determine whether the aggregate provided by a committee member is good. "
+                         "If the cosine similarity between the leader computed update and the aggregate is below the "
+                         "threshold, the committee member receives negative feedback.")
 
 # distributed system attributes
 parser.add_argument('-ns', '--network_stability', type=float, default=1.0, help='the odds of a device being and '
@@ -172,7 +176,8 @@ if __name__ == '__main__':
                                           data_transmission_speed=args['data_transmission_speed'],
                                           equal_computation_power=args['equal_computation_power'],
                                           check_signature=args['check_signature'],
-                                          stop_condition=args['epsilon'], dataset=args['dataset'])
+                                          stop_condition=args['epsilon'],
+                                          cosine_sim_threshold=args['cosine_sim_threshold'], dataset=args['dataset'])
     device_list = list(devices_in_network.devices_set.values())
 
     # Extract the bounds on the data which was used for the creation of the devices.
@@ -429,6 +434,10 @@ if __name__ == '__main__':
                 with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round + 1}.txt", 'a') as file:
                     if device.return_is_malicious():
                         file.write(f"{device.return_idx()} assigned {device.return_role()}. \n")
+
+        # also log the current blacklists
+        with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round + 1}.txt", 'a') as file:
+            file.write(f"Current blacklisted nodes: {list(set(blacklist_contr + blacklist_rep))}. \n")
 
         if args['verbose']:
             print(f"Number of leaders this round: {len(leaders_this_round)} \n"

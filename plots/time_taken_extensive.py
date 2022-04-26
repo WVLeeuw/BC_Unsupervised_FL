@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal30_nonIID_real_ns1_blacklist_test_1', 'mal30_nonIID_real_ns1_blacklist_test_2', 'mal30_nonIID_real_ns1_blacklist_test_3', 'mal30_nonIID_real_ns1_blacklist_test_4', 'mal30_nonIID_real_ns1_blacklist_test_5']
-simulated_2 = ['mal30_nonIID_real_ns1_rs0_1', 'mal30_nonIID_real_ns1_rs0_2', 'mal30_nonIID_real_ns1_rs0_3', 'mal30_nonIID_real_ns1_rs0_4', 'mal30_nonIID_real_ns1_rs0_5']
+simulated_1 = ['mal30_nonIID_blobs_ns1_6', 'mal30_nonIID_blobs_ns1_7', 'mal30_nonIID_blobs_ns1_8', 'mal30_nonIID_blobs_ns1_9', 'mal30_nonIID_blobs_ns1_10']
+simulated_2 = ['mal30_nonIID_blobs_ns1_rs0_1', 'mal30_nonIID_blobs_ns1_rs0_2', 'mal30_nonIID_blobs_ns1_rs0_3', 'mal30_nonIID_blobs_ns1_rs0_4', 'mal30_nonIID_blobs_ns1_rs0_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -140,7 +140,7 @@ ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
 ax2.legend(['with rep. system', 'without rep. system'])
 
-filename = 'time_taken_comparison_mal30_rep_vs_norep_IID.png'
+filename = 'time_taken_comparison_mal30_nonIID_blobs_rep_strict_vs_no_rep.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()
@@ -155,7 +155,7 @@ ax3.set_xlabel('Round number')
 ax3.set_ylim([0, 2])
 ax3.legend(['with rep. system', 'without rep. system'])
 
-filename = 'est_time_taken_wo_role_assign_comparison_mal30_rep_vs_norep_nonIID.png'
+filename = 'est_time_taken_wo_role_assign_comparison_mal30_nonIID_blobs_rep_strict_vs_no_rep.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

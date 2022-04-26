@@ -23,7 +23,7 @@ class Device:
     def __init__(self, idx, ds, local_epochs, network_stability, committee_update_wait_time, committee_block_wait_time,
                  committee_threshold, contribution_lag, fed_avg, leader_wait_time, global_update_lag, equal_link_speed,
                  base_data_transmission_speed, equal_computation_power, is_malicious, check_signature, stop_condition,
-                 bc=None, model=None):
+                 cosine_sim_threshold, bc=None, model=None):
         # Identifier
         self.idx = idx
 
@@ -106,6 +106,7 @@ class Device:
         # Leaders
         self.leader_wait_time = leader_wait_time
         self.global_update_lag = global_update_lag
+        self.cosine_sim_threshold = cosine_sim_threshold
         self.seen_committee_idxs = set()
         self.feedback_dicts = []
         self.obtained_aggregated_unordered = {}
@@ -770,8 +771,8 @@ class Device:
         deltas = []
         for i in range(len(g_centroids)):
             deltas.append(euclidean(g_centroids[i], new_g_centroids[i]))
-        avg_delta = sum(deltas)/len(deltas)
-        stop_criterion = avg_delta/min_init_dist < self.stop_condition
+        avg_delta = sum(deltas) / len(deltas)
+        stop_criterion = avg_delta / min_init_dist < self.stop_condition
         print(deltas, stop_criterion)
         self.deltas = deltas
 
@@ -820,7 +821,7 @@ class Device:
         if re_init:  # reset contribution values.
             device_idxs = self.obtain_latest_block().get_data()['contribution'].keys()
             data['contribution'] = dict.fromkeys(device_idxs, 0)
-        data['pos_reputation'], data['neg_reputation'] = self.update_reputation()
+        data['pos_reputation'], data['neg_reputation'] = self.update_reputation(new_g_centroids)
         block = Block(index=self.blockchain.get_chain_length() + 1, data=data, previous_hash=previous_hash,
                       miner_pubkey=self.return_rsa_pub_key(), produced_by=self.return_idx())
         block.set_signature(self.sign(block))
@@ -916,18 +917,31 @@ class Device:
             verify_results.append(comm_member.verify_block(self.proposed_block))
         return all(verify_results)  # returns False if any verification has failed.
 
+    # Cosine similarity computation used in update_reputation() to assess the quality of an aggregate.
+    # Intended to assess whether an aggregate helped move toward the common goal (i.e. compute_update() result).
+    # Takes two centroids and returns their cosine similarity.
+    def cosine_sim(self, line1, line2):
+        if len(line1) == len(line2) == 1:
+            return np.dot(line1, line2) / (np.linalg.norm(line1) * np.linalg.norm(line2))
+        else:  # i.e. if line1 and/or line2 has more than one point.
+            cosine_sim = np.sum(line1 * line2, axis=1) / (np.linalg.norm(line1, axis=1) * np.linalg.norm(line2, axis=1))
+            avg_cosine_sim = sum(cosine_sim) / len(cosine_sim)
+            # return average cosine similarity across all dimensions.
+            return avg_cosine_sim
+
     # checks for each committee member whether they successfully executed communication steps and if so,
     # assigns positive feedback. Negative otherwise.
-    def update_reputation(self):
+    def update_reputation(self, new_g_centroids):
         committee_members_idxs = [peer.return_idx() for peer in self.peer_list if peer.return_role() == 'committee']
         updated_pos_reputation = copy.copy(self.obtain_latest_block().get_data()['pos_reputation'])
         updated_neg_reputation = copy.copy(self.obtain_latest_block().get_data()['neg_reputation'])
 
         for member_idx in self.seen_committee_idxs:
-            # Check whether the provided aggregate was good (enough).
+            # Check whether the provided aggregate was good (enough) based on silhouette avg and cosine similarity.
             # If so, we can increment their reputation. Decrement otherwise.
-            if self.validate_update(self.centroids_sender_dict[member_idx]) >= \
-                    self.validate_update(self.retrieve_global_centroids()):
+            # self.validate_update(self.centroids_sender_dict[member_idx]) >= \
+            # self.validate_update(self.retrieve_global_centroids()) and
+            if self.cosine_sim(new_g_centroids, self.centroids_sender_dict[member_idx]) > self.cosine_sim_threshold:
                 if member_idx in updated_pos_reputation:  # check if key exists
                     updated_pos_reputation[member_idx] = updated_pos_reputation.get(member_idx, 1) + 1
                 else:  # first time we encounter the device
@@ -973,7 +987,7 @@ class Device:
         # where we consider L(.) to be the silhouette score. Positive C if it improves, negative C if it worsens.
         for device_idx in final_contr_comp.keys():
             if device_idx in final_contr:
-                final_contr[device_idx] = (1-beta) * final_contr_comp[device_idx] + beta * final_contr[device_idx]
+                final_contr[device_idx] = (1 - beta) * final_contr_comp[device_idx] + beta * final_contr[device_idx]
             else:
                 final_contr[device_idx] = final_contr_comp[device_idx]  # first time we encounter the device.
 
@@ -1000,7 +1014,7 @@ class DevicesInNetwork(object):
     def __init__(self, is_iid, num_devices, num_malicious, local_epochs, network_stability, committee_update_wait_time,
                  committee_block_wait_time, committee_threshold, contribution_lag, fed_avg, leader_wait_time,
                  global_update_lag, equal_link_speed, data_transmission_speed, equal_computation_power, check_signature,
-                 stop_condition, bc=None, dataset=None):
+                 stop_condition, cosine_sim_threshold, bc=None, dataset=None):
         self.dataset = dataset
         self.is_iid = is_iid
         self.num_devices = num_devices
@@ -1022,6 +1036,7 @@ class DevicesInNetwork(object):
         # leader
         self.leader_wait_time = leader_wait_time
         self.global_update_lag = global_update_lag
+        self.cosine_sim_threshold = cosine_sim_threshold
         # blockchain
         if bc is not None:
             self.blockchain = copy.copy(bc)
@@ -1055,7 +1070,8 @@ class DevicesInNetwork(object):
                               self.committee_update_wait_time, self.committee_block_wait_time, self.committee_threshold,
                               self.contribution_lag, self.fed_avg, self.leader_wait_time, self.global_update_lag,
                               self.equal_link_speed, self.data_transmission_speed, self.equal_computation_power,
-                              is_malicious, self.check_signature, self.stop_condition, bc=self.blockchain)
+                              is_malicious, self.check_signature, self.stop_condition, self.cosine_sim_threshold,
+                              bc=self.blockchain)
             self.devices_set[device_idx] = a_device
             print(f"Creation of device having idx {device_idx} is done.")
         print("Creation of devices is done!")
