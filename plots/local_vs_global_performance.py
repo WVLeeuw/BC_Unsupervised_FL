@@ -14,7 +14,8 @@ max_round = 0
 for folder in dirs:
     if 'comm_' in folder:
         if len(folder) > 7:
-            max_round = 100
+            if int(folder[-3:]) > max_round:
+                max_round = int(folder[-3:])
         elif len(folder) == 7:
             if int(folder[-2:]) > max_round:
                 max_round = int(folder[-2:])

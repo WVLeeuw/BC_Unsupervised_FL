@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal30_nonIID_blobs_ns1_6', 'mal30_nonIID_blobs_ns1_7', 'mal30_nonIID_blobs_ns1_8', 'mal30_nonIID_blobs_ns1_9', 'mal30_nonIID_blobs_ns1_10']
-simulated_2 = ['mal30_nonIID_blobs_ns1_rs0_1', 'mal30_nonIID_blobs_ns1_rs0_2', 'mal30_nonIID_blobs_ns1_rs0_3', 'mal30_nonIID_blobs_ns1_rs0_4', 'mal30_nonIID_blobs_ns1_rs0_5']
+simulated_1 = ['IID_real_200rounds_1', 'IID_real_200rounds_2', 'IID_real_200rounds_3', 'IID_real_200rounds_4', 'IID_real_200rounds_5']
+simulated_2 = ['IID_real_200rounds_rr_test_1', 'IID_real_200rounds_rr_test_2', 'IID_real_200rounds_rr_test_3', 'IID_real_200rounds_rr_test_4', 'IID_real_200rounds_rr_test_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -17,7 +17,8 @@ for i in range(len(simulated_1)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_1[i] = 100
+                if int(f[-3:]) > max_rounds_1[i]:
+                    max_rounds_1[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_1[i]:
                     max_rounds_1[i] = int(f[-2:])
@@ -31,7 +32,8 @@ for i in range(len(simulated_2)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_2[i] = 100
+                if int(f[-3:]) > max_rounds_2[i]:
+                    max_rounds_2[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_2[i]:
                     max_rounds_2[i] = int(f[-2:])
@@ -137,7 +139,7 @@ ax2.set_ylabel('proportion of rounds assigned')
 ax2.set_ylim([0, 1])
 plt.xticks(r + width/2, labels)
 
-fig.legend(['with rep. system', 'without rep. system'])
-filename = 'role_assignment_comparison_mal_30_nonIID_blobs_rep_strict_vs_no_rep.png'
-plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+fig.legend(['rr=3', 'rr=2, s_i+f_i=5'])
+filename = 'role_assignment_comparison_mal20_rep_vs_norep_nonIID_200rounds.png'
+# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

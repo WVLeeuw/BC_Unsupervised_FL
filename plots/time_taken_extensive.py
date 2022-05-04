@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal30_nonIID_blobs_ns1_6', 'mal30_nonIID_blobs_ns1_7', 'mal30_nonIID_blobs_ns1_8', 'mal30_nonIID_blobs_ns1_9', 'mal30_nonIID_blobs_ns1_10']
-simulated_2 = ['mal30_nonIID_blobs_ns1_rs0_1', 'mal30_nonIID_blobs_ns1_rs0_2', 'mal30_nonIID_blobs_ns1_rs0_3', 'mal30_nonIID_blobs_ns1_rs0_4', 'mal30_nonIID_blobs_ns1_rs0_5']
+simulated_1 = ['nonIID_real_200rounds_1', 'nonIID_real_200rounds_2', 'nonIID_real_200rounds_3', 'nonIID_real_200rounds_4', 'nonIID_real_200rounds_5']
+simulated_2 = ['mal10_nonIID_rs0_real_1', 'mal10_nonIID_rs0_real_2', 'mal10_nonIID_rs0_real_3', 'mal10_nonIID_rs0_real_4', 'mal10_nonIID_rs0_real_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -17,7 +17,8 @@ for i in range(len(simulated_1)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_1[i] = 100
+                if int(f[-3:]) > max_rounds_1[i]:
+                    max_rounds_1[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_1[i]:
                     max_rounds_1[i] = int(f[-2:])
@@ -31,7 +32,8 @@ for i in range(len(simulated_2)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_2[i] = 100
+                if int(f[-3:]) > max_rounds_2[i]:
+                    max_rounds_2[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_2[i]:
                     max_rounds_2[i] = int(f[-2:])
@@ -140,7 +142,7 @@ ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
 ax2.legend(['with rep. system', 'without rep. system'])
 
-filename = 'time_taken_comparison_mal30_nonIID_blobs_rep_strict_vs_no_rep.png'
+filename = 'time_taken_comparison_mal20_rep_vs_norep_IID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()
@@ -155,7 +157,7 @@ ax3.set_xlabel('Round number')
 ax3.set_ylim([0, 2])
 ax3.legend(['with rep. system', 'without rep. system'])
 
-filename = 'est_time_taken_wo_role_assign_comparison_mal30_nonIID_blobs_rep_strict_vs_no_rep.png'
+filename = 'est_time_taken_wo_role_assign_comparison_mal20_rep_vs_norep_IID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

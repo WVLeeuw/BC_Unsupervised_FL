@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folders = ['blocks_100_real_1', 'blocks_100_real_2', 'blocks_100_real_3', 'blocks_100_real_4', 'blocks_100_real_5']
+log_folders = ['blocks_500_real_1', 'blocks_500_real_2', 'blocks_500_real_3', 'blocks_500_real_4', 'blocks_500_real_5']
 fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
@@ -63,7 +63,7 @@ ax2.set_ylabel('Time spent (s)')
 ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
 
-filename = 'time_taken_loosely_100blocks_real.png'
+filename = 'time_taken_500blocks_real.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

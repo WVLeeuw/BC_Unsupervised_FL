@@ -10,8 +10,8 @@ from scipy.spatial.distance import euclidean
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal30_nonIID_blobs_ns1_6', 'mal30_nonIID_blobs_ns1_7', 'mal30_nonIID_blobs_ns1_8', 'mal30_nonIID_blobs_ns1_9', 'mal30_nonIID_blobs_ns1_10']
-simulated_2 = ['mal30_nonIID_blobs_ns1_rs0_1', 'mal30_nonIID_blobs_ns1_rs0_2', 'mal30_nonIID_blobs_ns1_rs0_3', 'mal30_nonIID_blobs_ns1_rs0_4', 'mal30_nonIID_blobs_ns1_rs0_5']
+simulated_1 = ['mal20_IID_real_200rounds_1', 'mal20_IID_real_200rounds_2', 'mal20_IID_real_200rounds_3', 'mal20_IID_real_200rounds_4', 'mal20_IID_real_200rounds_5']
+simulated_2 = ['mal20_nonIID_rs0_real_1', 'mal20_nonIID_rs0_real_2', 'mal20_nonIID_rs0_real_3', 'mal20_nonIID_rs0_real_4', 'mal20_nonIID_rs0_real_5']
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -21,7 +21,8 @@ for i in range(len(simulated_1)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_1[i] = 100
+                if int(f[-3:]) > max_rounds_1[i]:
+                    max_rounds_1[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_1[i]:
                     max_rounds_1[i] = int(f[-2:])
@@ -35,7 +36,8 @@ for i in range(len(simulated_2)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds_2[i] = 100
+                if int(f[-3:]) > max_rounds_2[i]:
+                    max_rounds_2[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds_2[i]:
                     max_rounds_2[i] = int(f[-2:])
@@ -160,7 +162,7 @@ ax1.set_xlabel('round number')
 ax1.set_ylabel('proportional distance w.r.t. distance between initial centers')
 ax1.legend()
 
-filename = 'convergence_mal_30_nonIID_blobs_rep_strict_vs_no_rep.png'
+filename = 'convergence_mal20_rep_vs_norep_IID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 

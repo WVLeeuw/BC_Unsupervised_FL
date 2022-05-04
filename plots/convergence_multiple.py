@@ -19,7 +19,8 @@ for i in range(len(log_folders)):
     for f in cur_dir:
         if 'comm_' in f:
             if len(f) > 7:
-                max_rounds[i] = 100
+                if int(f[-3:]) > max_rounds[i]:
+                    max_rounds[i] = int(f[-3:])
             elif len(f) == 7:
                 if int(f[-2:]) > max_rounds[i]:
                     max_rounds[i] = int(f[-2:])

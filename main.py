@@ -81,6 +81,10 @@ parser.add_argument('-cth', '--contribution_threshold', type=float, default=-.2,
 parser.add_argument('-rr', '--reputation_ratio', type=float, default=3.0,
                     help="ratio of negative interactions to positive interactions in which case a device is excluded "
                          "from being a committee member or leader.")
+parser.add_argument('-rint', '--reputation_interactions', type=int, default=5,
+                    help="minimum number of interactions (successful or unsuccessful) that a device has fulfilled "
+                         "before they can be blacklisted. Used in conjunction with the reputation ratio to exclude "
+                         "devices")
 parser.add_argument('-csth', '--cosine_sim_threshold', type=float, default=.25,
                     help="threshold used to determine whether the aggregate provided by a committee member is good. "
                          "If the cosine similarity between the leader computed update and the aggregate is below the "
@@ -295,7 +299,7 @@ if __name__ == '__main__':
             print(f"Bounds of the contribution values this round are: {contr_bounds}")
             eligible_comm_members = {}
             eligible_leaders = {}
-            chosen_catch_up = []  # 10% probability that a device having (1, 1) reputation is chosen.
+            chosen_catch_up = []  # 5% probability that a device having (1, 1) reputation is chosen.
             for device in device_list:
                 if device.return_idx() in pos_rep and device.return_idx() in neg_rep:
                     pos_count, neg_count = pos_rep[device.return_idx()], neg_rep[device.return_idx()]
@@ -308,11 +312,12 @@ if __name__ == '__main__':
                         chosen_catch_up.append(device.return_idx())
 
                 # Check whether the device should be blacklisted based on their negative and positive interactions.
-                if neg_count / pos_count >= args['reputation_ratio']:
+                if neg_count / pos_count > args['reputation_ratio'] and \
+                        neg_count + pos_count >= args['reputation_interactions']:
                     blacklist_rep.append(device.return_idx())
 
                 # N.B. if a device's contribution is poor, they would not do well to validate other updates either.
-                if device.return_idx() not in blacklist_rep + blacklist_contr:
+                if device.return_idx() not in list(set(blacklist_rep + blacklist_contr)):
                     # check whether the device was a committee member in the previous round, not eligible otherwise.
                     if device.return_role() != 'committee':
                         eligible_comm_members[device.return_idx()] = np.random.beta(pos_count, neg_count)
@@ -437,7 +442,8 @@ if __name__ == '__main__':
 
         # also log the current blacklists
         with open(f"{log_folder_path_comm_round}/malicious_devices_comm_{comm_round + 1}.txt", 'a') as file:
-            file.write(f"Current blacklisted nodes: {list(set(blacklist_contr + blacklist_rep))}. \n")
+            file.write(f"Current blacklisted nodes: "
+                       f"{', '.join([str(e) for e in list(set(blacklist_contr + blacklist_rep))])} \n")
 
         if args['verbose']:
             print(f"Number of leaders this round: {len(leaders_this_round)} \n"
@@ -880,8 +886,6 @@ if __name__ == '__main__':
                 file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
                 file.write(f"Estimate time taken if devices ran in parallel: {parallel_time_estimate} seconds. \n")
                 file.write(f"Estimate time without role assignment: {estimate_wo_role_assignment} seconds. \n")
-                # file.write(f"Estimate time spent if all devices ran in parallel (real distributed system): "
-                #            f"{parallel_time_estimate} seconds. \n")
                 silhouette_scores = []
                 # Need to treat the dataset as a global dataset to be able to compare with centralized and
                 # federated k-means

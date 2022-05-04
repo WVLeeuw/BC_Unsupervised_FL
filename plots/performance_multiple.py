@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-log_folders = ['04262022_102817']
+log_folders = ['nonIID_dummy_1', 'nonIID_dummy_2', 'nonIID_dummy_3', 'nonIID_dummy_4', 'nonIID_dummy_5']
 fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
