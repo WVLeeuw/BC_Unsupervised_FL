@@ -6,7 +6,7 @@ from blockchain import Blockchain
 import json
 import ast
 
-log_folders = ['nonIID_blobs_1', 'nonIID_blobs_2', 'nonIID_blobs_3', 'nonIID_blobs_4', 'nonIID_blobs_5']
+log_folders = [f'mal20_IID_real_{j}' for j in range(1, 50)]
 fig_path = f'../logs/plots/'
 
 # Plot, for the provided log folder, the rounds (i.e. scatter) in which a malicious leader managed to have

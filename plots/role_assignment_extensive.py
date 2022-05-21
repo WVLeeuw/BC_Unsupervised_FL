@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['IID_real_200rounds_1', 'IID_real_200rounds_2', 'IID_real_200rounds_3', 'IID_real_200rounds_4', 'IID_real_200rounds_5']
-simulated_2 = ['IID_real_200rounds_rr_test_1', 'IID_real_200rounds_rr_test_2', 'IID_real_200rounds_rr_test_3', 'IID_real_200rounds_rr_test_4', 'IID_real_200rounds_rr_test_5']
+simulated_1 = [f'mal0_nonIID_real_{i}' for i in range(1, 101)]
+simulated_2 = [f'mal0_nonIID_rs0_real_{j}' for j in range(1, 101)]
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -111,35 +111,53 @@ regular_counts_1 = [B_none_count_1, B_data_owner_count_1, B_committee_count_1, B
 malicious_counts_2 = [M_none_count_2, M_data_owner_count_2, M_committee_count_2, M_leader_count_2]
 regular_counts_2 = [B_none_count_2, B_data_owner_count_2, B_committee_count_2, B_leader_count_2]
 
-malicious_props_1 = [i/(num_malicious_1*totals[0]) for i in malicious_counts_1]
-malicious_props_2 = [i/(num_malicious_2*totals[1]) for i in malicious_counts_2]
 regular_props_1 = [i/(num_regular_1*totals[0]) for i in regular_counts_1]
 regular_props_2 = [i/(num_regular_2*totals[1]) for i in regular_counts_2]
 
 labels = ['None', 'data owner', 'committee', 'leader']
 colors = ['purple', 'orange']
 
-fig = plt.figure(figsize=(8, 8))
-ax1, ax2 = fig.subplots(2, 1, sharex=True)
+if num_malicious_1 <= 0 or num_malicious_2 <= 0:
+    fig = plt.figure(figsize=(8, 6))
+    ax1 = fig.subplots(1, 1)
 
-n = len(labels)
-r = np.arange(n)
-width = .3
+    n = len(labels)
+    r = np.arange(n)
+    width = .3
 
-ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k')
-ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k')
-ax1.set_title('Role assignment for malicious devices')
-ax1.set_ylabel('proportion of rounds assigned')
-ax1.set_ylim([0, 1])
+    ax1.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k')
+    ax1.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k')
+    ax1.set_title('Role assignment for regular devices')
+    ax1.set_ylabel('proportion of rounds assigned')
+    ax1.set_ylim([0, 1])
+    plt.xticks(r + width / 2, labels)
+    fig.legend(['with rep. system', 'without rep. system'])
+else:
+    malicious_props_1 = [i/(num_malicious_1*totals[0]) for i in malicious_counts_1]
+    malicious_props_2 = [i/(num_malicious_2*totals[1]) for i in malicious_counts_2]
 
-ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k')
-ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k')
-ax2.set_title('Role assignment for regular devices')
-ax2.set_ylabel('proportion of rounds assigned')
-ax2.set_ylim([0, 1])
-plt.xticks(r + width/2, labels)
+    fig = plt.figure(figsize=(8, 8))
+    ax1, ax2 = fig.subplots(2, 1, sharex=True)
 
-fig.legend(['rr=3', 'rr=2, s_i+f_i=5'])
-filename = 'role_assignment_comparison_mal20_rep_vs_norep_nonIID_200rounds.png'
-# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+    n = len(labels)
+    r = np.arange(n)
+    width = .3
+
+    ax1.bar(r, malicious_props_1, color=colors[0], width=width, edgecolor='k')
+    ax1.bar(r + width, malicious_props_2, color=colors[1], width=width, edgecolor='k')
+    ax1.set_title('Role assignment for malicious devices')
+    ax1.set_ylabel('proportion of rounds assigned')
+    ax1.set_ylim([0, 1])
+
+    ax2.bar(r, regular_props_1, color=colors[0], width=width, edgecolor='k')
+    ax2.bar(r + width, regular_props_2, color=colors[1], width=width, edgecolor='k')
+    ax2.set_title('Role assignment for regular devices')
+    ax2.set_ylabel('proportion of rounds assigned')
+    ax2.set_ylim([0, 1])
+    plt.xticks(r + width/2, labels)
+
+    fig.legend(['with rep. system', 'without rep. system'])
+
+filename = 'role_assignment_comparison_mal0_nonIID_200rounds.png'
+plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()

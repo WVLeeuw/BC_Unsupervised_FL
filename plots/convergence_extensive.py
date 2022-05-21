@@ -10,8 +10,8 @@ from scipy.spatial.distance import euclidean
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['mal20_IID_real_200rounds_1', 'mal20_IID_real_200rounds_2', 'mal20_IID_real_200rounds_3', 'mal20_IID_real_200rounds_4', 'mal20_IID_real_200rounds_5']
-simulated_2 = ['mal20_nonIID_rs0_real_1', 'mal20_nonIID_rs0_real_2', 'mal20_nonIID_rs0_real_3', 'mal20_nonIID_rs0_real_4', 'mal20_nonIID_rs0_real_5']
+simulated_1 = [f'mal30_IID_real_{i}' for i in range(1, 51)]
+simulated_2 = [f'mal30_IID_rs0_real_{i}' for i in range(1, 51)]
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -65,14 +65,14 @@ min_distances_init_1, min_distances_init_2 = [], []
 for j in range(len(simulated_1)):
     avg_distances_init_1.append(sum([euclidean(init_centers_simulated_1[j][i], init_centers_simulated_1[j][i + 1]) for i in
                                      range(len(init_centers_simulated_1[j]) - 1)]) / len(init_centers_simulated_1[j]))
-    min_distances_init_1.append(min([euclidean(init_centers_simulated_1[0][i], init_centers_simulated_1[0][i + 1]) for i in
-                                     range(len(init_centers_simulated_1[0]) - 1)]))
+    min_distances_init_1.append(min([euclidean(init_centers_simulated_1[j][i], init_centers_simulated_1[j][i + 1]) for i in
+                                     range(len(init_centers_simulated_1[j]) - 1)]))
 
 for j in range(len(simulated_2)):
     avg_distances_init_2.append(sum([euclidean(init_centers_simulated_2[j][i], init_centers_simulated_2[j][i + 1]) for i in
                                      range(len(init_centers_simulated_2[j]) - 1)]) / len(init_centers_simulated_2[j]))
-    min_distances_init_2.append(min([euclidean(init_centers_simulated_2[0][i], init_centers_simulated_2[0][i + 1]) for i in
-                                     range(len(init_centers_simulated_2[0]) - 1)]))
+    min_distances_init_2.append(min([euclidean(init_centers_simulated_2[j][i], init_centers_simulated_2[j][i + 1]) for i in
+                                     range(len(init_centers_simulated_2[j]) - 1)]))
 
 avg_min_dist_init_1 = np.mean(min_distances_init_1)
 avg_min_dist_init_2 = np.mean(min_distances_init_2)
@@ -101,9 +101,12 @@ for i in range(1, max(max_rounds_1) + 1):
                     delta_count = 0
                     deltas = line.split(':')[-1].split(',')
                     for el in range(len(deltas)):
-                        summed_distance += float(re.findall("\d+\.\d+", deltas[el])[0])
-                        delta_count += 1
-                    avg_dists_this_round.append(summed_distance / delta_count)
+                        if len(re.findall("\d+\.\d+", deltas[el])) > 0:
+                            summed_distance += float(re.findall("\d+\.\d+", deltas[el])[0])
+                            delta_count += 1
+                    if delta_count > 0:
+                        avg_delta = summed_distance/delta_count
+                        avg_dists_this_round.append(avg_delta)
     if not updated_this_round:
         temp_1.append(None)
     else:
@@ -126,9 +129,12 @@ for i in range(1, max(max_rounds_2) + 1):
                     delta_count = 0
                     deltas = line.split(':')[-1].split(',')
                     for el in range(len(deltas)):
-                        summed_distance += float(re.findall("\d+\.\d+", deltas[el])[0])
-                        delta_count += 1
-                    avg_dists_this_round.append(summed_distance / delta_count)
+                        if len(re.findall("\d+\.\d+", deltas[el])) > 0:
+                            summed_distance += float(re.findall("\d+\.\d+", deltas[el])[0])
+                            delta_count += 1
+                    if delta_count > 0:
+                        avg_delta = summed_distance / delta_count
+                        avg_dists_this_round.append(avg_delta)
     if not updated_this_round:
         temp_2.append(None)
     else:
@@ -160,9 +166,10 @@ print(prop_dists_2[cur_mask])
 ax1.set_title('Convergence over time.')
 ax1.set_xlabel('round number')
 ax1.set_ylabel('proportional distance w.r.t. distance between initial centers')
+ax1.set_ylim([0, 1])
 ax1.legend()
 
-filename = 'convergence_mal20_rep_vs_norep_IID_200rounds.png'
-plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+filename = 'convergence_mal0_rep_vs_norep_nonIID_200rounds.png'
+# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 plt.show()
 

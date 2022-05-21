@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = ['nonIID_real_200rounds_1', 'nonIID_real_200rounds_2', 'nonIID_real_200rounds_3', 'nonIID_real_200rounds_4', 'nonIID_real_200rounds_5']
-simulated_2 = ['mal10_nonIID_rs0_real_1', 'mal10_nonIID_rs0_real_2', 'mal10_nonIID_rs0_real_3', 'mal10_nonIID_rs0_real_4', 'mal10_nonIID_rs0_real_5']
+simulated_1 = [f'mal0_nonIID_real_{i}' for i in range(1, 101)]
+simulated_2 = [f'mal0_nonIID_rs0_real_{j}' for j in range(1, 101)]
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -122,7 +122,10 @@ colors = ['purple', 'orange']
 
 fig = plt.figure(figsize=(8, 6))
 ax1 = fig.subplots(1, 1)
-ax1.plot(range(1, max(max_rounds_1) + 1), avg_time_spent_1, linestyle='-', color=colors[0])
+coef = np.polyfit(range(1, max(max_rounds_1) + 1), avg_time_spent_1, 1)  # test
+poly1d_fn = np.poly1d(coef)  # test
+ax1.plot(range(1, max(max_rounds_1) + 1), avg_time_spent_1, 'yo', range(1, max(max_rounds_1) + 1),
+         poly1d_fn(range(1, max(max_rounds_1) + 1)), '--k')  # test
 ax1.plot(range(1, max(max_rounds_2) + 1), avg_time_spent_2, linestyle='-', color=colors[1])
 ax1.set_title('Average time spent per learning round.')
 ax1.set_ylabel('Time spent (s)')
@@ -142,7 +145,7 @@ ax2.set_xlabel('Round number')
 ax2.set_ylim([0, 4])
 ax2.legend(['with rep. system', 'without rep. system'])
 
-filename = 'time_taken_comparison_mal20_rep_vs_norep_IID_200rounds.png'
+filename = 'time_taken_comparison_mal0_rep_vs_norep_nonIID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()
@@ -157,7 +160,7 @@ ax3.set_xlabel('Round number')
 ax3.set_ylim([0, 2])
 ax3.legend(['with rep. system', 'without rep. system'])
 
-filename = 'est_time_taken_wo_role_assign_comparison_mal20_rep_vs_norep_IID_200rounds.png'
+filename = 'est_time_taken_wo_role_assign_comparison_mal0_rep_vs_norep_nonIID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

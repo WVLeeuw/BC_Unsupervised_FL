@@ -47,7 +47,10 @@ print(f'Average total time estimate per run is {sum(avg_est_time_spent)/max(max_
 
 fig = plt.figure(figsize=(8, 6))
 ax1 = fig.subplots(1, 1)
-ax1.plot(range(1, max(max_rounds) + 1), avg_time_spent)
+coef = np.polyfit(range(1, max(max_rounds_1) + 1), avg_time_spent_1, 1)  # to show linear regression
+poly1d_fn = np.poly1d(coef)  # idem
+ax1.plot(range(1, max(max_rounds) + 1), avg_time_spent_1, 'yo', range(1, max(max_rounds) + 1),
+         poly1d_fn(range(1, max(max_rounds) + 1)), '--k')
 ax1.set_title('Average time spent per learning round.')
 ax1.set_ylabel('Time spent (s)')
 ax1.set_xlabel('Round number')

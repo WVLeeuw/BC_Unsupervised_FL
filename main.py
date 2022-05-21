@@ -399,6 +399,7 @@ if __name__ == '__main__':
             # shuffle the device list to simulate random assignments
             random.shuffle(device_list)
             for device in device_list:
+                device.reset_role()
                 if leaders_to_assign and device in eligible_leaders:
                     device.assign_leader_role()
                     leaders_to_assign -= 1
@@ -886,6 +887,8 @@ if __name__ == '__main__':
                 file.write(f"Time spent this communication round: {comm_round_time_taken} seconds.\n")
                 file.write(f"Estimate time taken if devices ran in parallel: {parallel_time_estimate} seconds. \n")
                 file.write(f"Estimate time without role assignment: {estimate_wo_role_assignment} seconds. \n")
+                file.write(f"{max_local_update_time}, {max_aggr_time}, {max_proposal_time}, {latest_vote_cast_time}, "
+                           f"{block_completion_time}, {total_propagation_delay}, {total_broadcast_delay} \n")
                 silhouette_scores = []
                 # Need to treat the dataset as a global dataset to be able to compare with centralized and
                 # federated k-means
@@ -973,24 +976,24 @@ if __name__ == '__main__':
     print(f"Total number of centroids recorded: {len(track_g_centroids)}. \n"
           f"Should be the same as chain length (if not reinitialized): "
           f"{device_list[0].return_blockchain_obj().get_chain_length()}.")
-    fig3, ax3 = plt.subplots(1, 1)
-    for device in device_list:
-        ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
-    colors = cm.nipy_spectral(cluster_labels.astype(float) / len(track_g_centroids))
-    # Plot the initial centroids separately.
-    for i in range(len(track_g_centroids[0])):
-        ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
-                    edgecolors='k')
-
-    for i in range(1, len(track_g_centroids) - 1):
-        for j in range(len(track_g_centroids[0])):
-            ax3.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
-
-    # Plot the last centroids separately.
-    for i in range(len(track_g_centroids[-1])):
-        ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
-                    edgecolors='k')
-    fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
+    # fig3, ax3 = plt.subplots(1, 1)
+    # for device in device_list:
+    #     ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
+    # colors = cm.nipy_spectral(cluster_labels.astype(float) / len(track_g_centroids))
+    # # Plot the initial centroids separately.
+    # for i in range(len(track_g_centroids[0])):
+    #     ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
+    #                 edgecolors='k')
+    #
+    # for i in range(1, len(track_g_centroids) - 1):
+    #     for j in range(len(track_g_centroids[0])):
+    #         ax3.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
+    #
+    # # Plot the last centroids separately.
+    # for i in range(len(track_g_centroids[-1])):
+    #     ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
+    #                 edgecolors='k')
+    # fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
     # plt.show()
 
     # Final clustering visualization
