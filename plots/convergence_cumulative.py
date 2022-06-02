@@ -11,8 +11,8 @@ from scipy.spatial.distance import euclidean
 
 fig_path = f'../logs/plots/'
 
-simulated = [f'mal10_IID_real_{i}' for i in range(1, 101)]
-simulated_2 = [f'mal10_IID_rs0_real_{j}' for j in range(1, 101)]
+simulated = [f'mal0_IID_real_{i}' for i in range(1, 101)]
+simulated_2 = [f'mal0_IID_rs0_real_{j}' for j in range(1, 101)]
 
 stop_condition = 0.05  # make sure this is equal to what it was during the run to get good results.
 

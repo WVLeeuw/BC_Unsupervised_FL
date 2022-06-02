@@ -245,8 +245,8 @@ if __name__ == '__main__':
     for device in device_list:
         k_choices.append(device.elbow_method())
     print("Average choice of k found: " + str(math.ceil(sum(k_choices) / len(k_choices))))
-    print(math.ceil(sum(k_choices) / len(k_choices)) == args['num_global_centroids'])
     # check if avg equals supplied parameter for global centroids.
+    print(math.ceil(sum(k_choices) / len(k_choices)) == args['num_global_centroids'])
 
     # 8. initialize blacklists for devices
     blacklist_contr = []
@@ -307,8 +307,8 @@ if __name__ == '__main__':
                     pos_count, neg_count = 1, 1
                 # pos_count == neg_count == 1 corresponds to new devices (in theory).
                 if pos_count == neg_count == 1:
-                    # assign committee role with 5% probability.
-                    if random.random() > .95 and len(chosen_catch_up) <= committee_members_to_assign // 3:
+                    # assign committee role with 10% probability.
+                    if random.random() > .90 and len(chosen_catch_up) <= committee_members_to_assign // 3:
                         chosen_catch_up.append(device.return_idx())
 
                 # Check whether the device should be blacklisted based on their negative and positive interactions.
@@ -738,7 +738,7 @@ if __name__ == '__main__':
         print(f"Latest time that a vote was cast was after {latest_vote_cast_time} seconds.")
 
         # Counting stage!
-        # A vote is a pair [0] contains the message, [1] contains the committee idx, [2] contains the leader idx.
+        # A vote is a list. [0] contains the message, [1] contains the committee idx, [2] contains the leader idx.
         winning_block = False
         winner = None
         block_completion_time = 0
@@ -960,9 +960,9 @@ if __name__ == '__main__':
     # ax1.set_ylabel('Time taken (s)')
     # ax1.set_ylim([0.0, 4])
     # fig1.savefig(fname=f"{log_folder_path}/time_per_round.png", dpi=600, bbox_inches='tight')
-    # plt.show()
-
-    # Same thing, but for the estimate of time it would take if this were a real distributed system.
+    # # plt.show()
+    #
+    # # Same thing, but for the estimate of time it would take if this were a real distributed system.
     # fig2, ax2 = plt.subplots(1, 1)
     # ax2.plot(range(1, total_comm_rounds + 1), est_time_taken_parallel_per_round)
     # ax2.set_title('Estimate of time taken (real distributed system)')
@@ -976,27 +976,27 @@ if __name__ == '__main__':
     print(f"Total number of centroids recorded: {len(track_g_centroids)}. \n"
           f"Should be the same as chain length (if not reinitialized): "
           f"{device_list[0].return_blockchain_obj().get_chain_length()}.")
-    # fig3, ax3 = plt.subplots(1, 1)
-    # for device in device_list:
-    #     ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
-    # colors = cm.nipy_spectral(cluster_labels.astype(float) / len(track_g_centroids))
-    # # Plot the initial centroids separately.
-    # for i in range(len(track_g_centroids[0])):
-    #     ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
-    #                 edgecolors='k')
-    #
-    # for i in range(1, len(track_g_centroids) - 1):
-    #     for j in range(len(track_g_centroids[0])):
-    #         ax3.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
-    #
-    # # Plot the last centroids separately.
-    # for i in range(len(track_g_centroids[-1])):
-    #     ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
-    #                 edgecolors='k')
-    # fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
+    fig3, ax3 = plt.subplots(1, 1)
+    for device in device_list:
+        ax3.scatter(device.dataset[:, 0], device.dataset[:, 1], color='green', s=30, alpha=.3)
+    colors = cm.nipy_spectral(cluster_labels.astype(float) / len(track_g_centroids))
+    # Plot the initial centroids separately.
+    for i in range(len(track_g_centroids[0])):
+        ax3.scatter(track_g_centroids[0][i][0], track_g_centroids[0][i][1], marker='D', color=colors[i], s=60,
+                    edgecolors='k')
+
+    for i in range(1, len(track_g_centroids) - 1):
+        for j in range(len(track_g_centroids[0])):
+            ax3.scatter(track_g_centroids[i][j][0], track_g_centroids[i][j][1], color=colors[j])
+
+    # Plot the last centroids separately.
+    for i in range(len(track_g_centroids[-1])):
+        ax3.scatter(track_g_centroids[-1][i][0], track_g_centroids[-1][i][1], marker='*', color=colors[i], s=100,
+                    edgecolors='k')
+    fig3.savefig(fname=f"{log_folder_path}/clustering_over_time.png", dpi=600, bbox_inches='tight')
     # plt.show()
 
-    # Final clustering visualization
+    # # Final clustering visualization
     global_dataset = []
     longest_chain_len = 0
     device_longest_chain = device_list[-1]
@@ -1004,7 +1004,7 @@ if __name__ == '__main__':
         if device.return_blockchain_obj().get_chain_length() > longest_chain_len:
             longest_chain_len = device.return_blockchain_obj().get_chain_length()
             device_longest_chain = device
-        silhouette_scores.append(device.validate_update(np.asarray(device.retrieve_global_centroids())))
+        #     silhouette_scores.append(device.validate_update(np.asarray(device.retrieve_global_centroids())))
         global_dataset.append(device.dataset)
     global_centroids = np.asarray(device_longest_chain.retrieve_global_centroids())
     global_dataset = np.asarray([record for sublist in global_dataset for record in sublist])
@@ -1014,7 +1014,8 @@ if __name__ == '__main__':
 
     fig4, ax4 = plt.subplots(1, 1)
     colors = cm.nipy_spectral(cluster_labels.astype(float) / n_clusters)
-    ax4.scatter(global_dataset[:, 0], global_dataset[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')
+    ax4.scatter(global_dataset[:, 0], global_dataset[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors,
+                edgecolor='k')
     ax4.scatter(global_centroids[:, 0], global_centroids[:, 1], marker='o', c='white', s=200, edgecolor='k')
     for i, c in enumerate(global_centroids):
         ax4.scatter(c[0], c[1], marker='$%d$' % i, s=50, edgecolor='k')

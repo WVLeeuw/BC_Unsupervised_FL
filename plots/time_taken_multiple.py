@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import sys
 import os
+import numpy as np
 
-log_folders = ['blocks_500_real_1', 'blocks_500_real_2', 'blocks_500_real_3', 'blocks_500_real_4', 'blocks_500_real_5']
+log_folders = ['covtype_test_100rounds_1']
+log_folders_10 = [f'covtype_test_10rounds_{i}' for i in range(1, 6)]
 fig_path = f'../logs/plots/'
 
 max_rounds = [0 for i in range(len(log_folders))]
@@ -47,14 +49,14 @@ print(f'Average total time estimate per run is {sum(avg_est_time_spent)/max(max_
 
 fig = plt.figure(figsize=(8, 6))
 ax1 = fig.subplots(1, 1)
-coef = np.polyfit(range(1, max(max_rounds_1) + 1), avg_time_spent_1, 1)  # to show linear regression
+coef = np.polyfit(range(1, max(max_rounds) + 1), avg_time_spent, 1)  # to show linear regression
 poly1d_fn = np.poly1d(coef)  # idem
-ax1.plot(range(1, max(max_rounds) + 1), avg_time_spent_1, 'yo', range(1, max(max_rounds) + 1),
+ax1.plot(range(1, max(max_rounds) + 1), avg_time_spent, 'yo', range(1, max(max_rounds) + 1),
          poly1d_fn(range(1, max(max_rounds) + 1)), '--k')
 ax1.set_title('Average time spent per learning round.')
 ax1.set_ylabel('Time spent (s)')
 ax1.set_xlabel('Round number')
-ax1.set_ylim([0, 4])
+# ax1.set_ylim([0, 4])
 
 plt.show()
 
@@ -64,9 +66,9 @@ ax2.plot(range(1, max(max_rounds) + 1), avg_est_time_spent)
 ax2.set_title('Average estimated time spent per learning round if run in parallel.')
 ax2.set_ylabel('Time spent (s)')
 ax2.set_xlabel('Round number')
-ax2.set_ylim([0, 4])
+# ax2.set_ylim([0, 4])
 
-filename = 'time_taken_500blocks_real.png'
+filename = 'time_taken_covtype_100rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

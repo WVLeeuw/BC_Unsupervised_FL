@@ -755,7 +755,7 @@ class Device:
         if len(obtained_centroids) > 0:
             for i in range(len(obtained_centroids[0])):
                 updated_g_centroids.append(obtained_centroids[:, i].mean(axis=0))
-        else:  # ToDo: placeholder for now, likely not what we want to happen. Just pass?
+        else:
             return np.zeros(g_centroids.shape)
 
         # compute new global centroids (simple update step).

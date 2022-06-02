@@ -6,8 +6,8 @@ import numpy as np
 
 fig_path = f'../logs/plots/'
 
-simulated_1 = [f'mal0_nonIID_real_{i}' for i in range(1, 101)]
-simulated_2 = [f'mal0_nonIID_rs0_real_{j}' for j in range(1, 101)]
+simulated_1 = [f'IID_blobs_10dims_{i}' for i in range(1, 21)]
+simulated_2 = [f'IID_blobs_60dims_{i}' for i in range(1, 21)]
 entire_log = simulated_1 + simulated_2
 
 # obtain max_rounds for simulated_1
@@ -130,8 +130,8 @@ ax1.plot(range(1, max(max_rounds_2) + 1), avg_time_spent_2, linestyle='-', color
 ax1.set_title('Average time spent per learning round.')
 ax1.set_ylabel('Time spent (s)')
 ax1.set_xlabel('Round number')
-ax1.set_ylim([0, 4])
-ax1.legend(['with rep. system', 'without rep. system'])
+# ax1.set_ylim([0, 4])
+# ax1.legend(['with rep. system', 'without rep. system'])
 
 plt.show()
 
@@ -142,8 +142,8 @@ ax2.plot(range(1, max(max_rounds_2) + 1), avg_est_time_spent_2, linestyle='-', c
 ax2.set_title('Average estimated time spent per learning round if run in parallel.')
 ax2.set_ylabel('Time spent (s)')
 ax2.set_xlabel('Round number')
-ax2.set_ylim([0, 4])
-ax2.legend(['with rep. system', 'without rep. system'])
+# ax2.set_ylim([0, 4])
+# ax2.legend(['with rep. system', 'without rep. system'])
 
 filename = 'time_taken_comparison_mal0_rep_vs_norep_nonIID_200rounds.png'
 plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
@@ -157,10 +157,10 @@ ax3.plot(range(1, max(max_rounds_2) + 1), avg_est_excl_role_2, linestyle='-', co
 ax3.set_title('Average estimated time spent per learning round in parallel, excluding role assignment.')
 ax3.set_ylabel('Time spent (s)')
 ax3.set_xlabel('Round number')
-ax3.set_ylim([0, 2])
-ax3.legend(['with rep. system', 'without rep. system'])
+# ax3.set_ylim([0, 2])
+# ax3.legend(['with rep. system', 'without rep. system'])
 
 filename = 'est_time_taken_wo_role_assign_comparison_mal0_rep_vs_norep_nonIID_200rounds.png'
-plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
+# plt.savefig(fname=os.path.join(fig_path, filename), dpi=600, bbox_inches='tight')
 
 plt.show()

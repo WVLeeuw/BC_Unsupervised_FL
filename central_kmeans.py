@@ -15,16 +15,17 @@ from utils import data_utils
 start_time = time.time()
 
 # X, y = make_blobs(n_samples=500, centers=3, n_features=2, random_state=42)
-# X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
-# X = [item for sublist in X for item in sublist]
-# X = np.asarray(X)
-breast_cancer = load_breast_cancer()
-X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
-y = breast_cancer.target
+X, _ = data_utils.create_dummy_data(dims=2, clients_per_cluster=1, clusters=3, samples_each=160)
+X = [item for sublist in X for item in sublist]
+X = np.asarray(X)
+# breast_cancer = load_breast_cancer()
+# X = pd.DataFrame(breast_cancer.data, columns=breast_cancer.feature_names)
+# y = breast_cancer.target
 
 n_clusters = 3
 central_model = cluster.KMeans(n_clusters=n_clusters, max_iter=100)
-cluster_labels = central_model.fit_predict(X)
+central_model.fit(X)
+cluster_labels = central_model.predict(X)
 
 centroids = central_model.cluster_centers_
 silhouette = silhouette_score(X, cluster_labels)
@@ -76,16 +77,16 @@ plt.show()
 fig, ax2 = plt.subplots(1, 1)
 colors = cm.nipy_spectral(cluster_labels.astype(float) / len(centroids))
 # convert X from df to array.
-X = X.to_numpy()
+# X = X.to_numpy()
 ax2.scatter(X[:, 0], X[:, 1], marker='.', s=30, lw=0, alpha=.7, c=colors, edgecolor='k')  # data points
 ax2.scatter(centroids[:, 0], centroids[:, 1], marker='o', c="white", s=200, edgecolor='k')  # centers
 
 for i, c in enumerate(centroids):
     ax2.scatter(c[0], c[1], marker="$%d$" % i, s=50, edgecolor='k')
 
-ax2.set_title("The visualization of clustered data.")
+ax2.set_title("Visualization of clustered data.")
 ax2.set_xlabel("Feature space for the 1st feature")
 ax2.set_ylabel("Feature space for the 2nd feature")
-fig.savefig(fname='figures/centralized_clustering_resul.png')
+fig.savefig(fname='figures/centralized_clustering_result_dummy.png', dpi=600, bbox_inches='tight')
 
 plt.show()
